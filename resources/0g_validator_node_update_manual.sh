@@ -4,6 +4,16 @@ function update_version {
     VERSION=$1
     RELEASE_URL="$2/aristotle-${VERSION}.tar.gz"
     BACKUP_DIR="$HOME/backups"
+
+    while true; do
+        read -p "Deploy type? (validator/rpc): " NODE_TYPE
+        NODE_TYPE=$(echo "$NODE_TYPE" | tr '[:upper:]' '[:lower:]')
+        if [[ "$NODE_TYPE" == "validator" || "$NODE_TYPE" == "rpc" ]]; then
+            break
+        else
+            echo "Please type exactly 'validator' or 'rpc'."
+        fi
+    done
  
     echo "Updating to version $VERSION..."
     
@@ -22,9 +32,9 @@ function update_version {
     wget $RELEASE_URL || { echo "Download failed"; exit 1; }
     tar -xzf aristotle-${VERSION}.tar.gz || { echo "Extraction failed"; exit 1; }
     rm aristotle-${VERSION}.tar.gz
- 
-    cp aristotle-${VERSION}/bin/geth $HOME/go/bin/0g-geth
-    cp aristotle-${VERSION}/bin/0gchaind $HOME/go/bin/0gchaind
+
+    cp aristotle-${VERSION}/${NODE_TYPE}/bin/geth $HOME/go/bin/0g-geth
+    cp aristotle-${VERSION}/${NODE_TYPE}/bin/0gchaind $HOME/go/bin/0gchaind
     sudo chmod +x $HOME/go/bin/0g-geth
     sudo chmod +x $HOME/go/bin/0gchaind
 

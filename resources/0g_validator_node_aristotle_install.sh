@@ -49,6 +49,7 @@ fi
 
 # Save env vars
 {
+  echo "export NODE_TYPE=\"$NODE_TYPE\""
   echo "export MONIKER=\"$MONIKER\""
   echo "export OG_PORT=\"$OG_PORT\""
   echo "export NODE_TYPE=\"$NODE_TYPE\""
@@ -92,7 +93,7 @@ cd $HOME
 sudo rm -rf aristotle
 wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/1.0.3/aristotle-v1.0.3.tar.gz -O aristotle-v1.0.3.tar.gz
 tar -xzvf aristotle-v1.0.3.tar.gz
-mv aristotle-v1.0.3 aristotle
+cp -r aristotle-v1.0.3/${NODE_TYPE} aristotle
 sudo rm aristotle-v1.0.3.tar.gz
 sudo chmod +x $HOME/aristotle/bin/geth
 sudo chmod +x $HOME/aristotle/bin/0gchaind

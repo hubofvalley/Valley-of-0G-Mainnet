@@ -44,12 +44,12 @@ function collect_inputs() {
       fail "At least one NFT token id is required for fresh setup"
     fi
 
-    read -p "4) Enter RPC endpoint for registration (press Enter to use default https://arb1.arbitrum.io/rpc): " RPC
-    RPC=${RPC:-https://arb1.arbitrum.io/rpc}
+    read -p "4) Enter RPC endpoint for registration (press Enter to use default https://evmrpc.0g.ai): " RPC
+    RPC=${RPC:-https://evmrpc.0g.ai}
   else
     # Still allow custom RPC override if desired (press Enter to keep default)
-    read -p "(Optional) RPC endpoint (press Enter to use default https://arb1.arbitrum.io/rpc): " RPC
-    RPC=${RPC:-https://arb1.arbitrum.io/rpc}
+    read -p "(Optional) RPC endpoint (press Enter to use default https://evmrpc.0g.ai): " RPC
+    RPC=${RPC:-https://evmrpc.0g.ai}
   fi
 
   # Fixed defaults (not prompted)
