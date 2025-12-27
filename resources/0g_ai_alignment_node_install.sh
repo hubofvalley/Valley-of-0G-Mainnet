@@ -214,7 +214,7 @@ function register_operator_single() {
     --commission "$COMMISSION" \
     --chain-id "$CHAIN_ID" \
     --rpc "$RPC" \
-    --contract 0xdD158B8A76566bC0c342893568e8fd3F08A9dAac \
+    --contract 0x18e56e7b120c7CBD06117A36E94E61a932A5A302 \
     --mainnet
 }
 
@@ -274,7 +274,7 @@ function delegate_then_approve() {
     --key "$ZG_ALIGNMENT_NODE_SERVICE_PRIVATEKEY" \
     --chain-id "$CHAIN_ID" \
     --rpc "$RPC" \
-    --contract 0xdD158B8A76566bC0c342893568e8fd3F08A9dAac \
+    --contract 0x18e56e7b120c7CBD06117A36E94E61a932A5A302 \
     --destNode "$NODE_OPERATOR_ADDRESS" \
     --tokenIds "$NFT_TOKEN_IDS"
 }
