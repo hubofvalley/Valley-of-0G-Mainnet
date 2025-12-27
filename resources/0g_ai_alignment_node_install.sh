@@ -53,7 +53,7 @@ function collect_inputs() {
   fi
 
   # Fixed defaults (not prompted)
-  CHAIN_ID=42161
+  CHAIN_ID=16661
   COMMISSION=10
 
   read -p "5) Create/enable UFW rules for chosen port? (yes/no, default yes): " ENABLE_UFW
