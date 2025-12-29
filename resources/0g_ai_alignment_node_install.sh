@@ -214,7 +214,7 @@ function register_operator_single() {
     --commission "$COMMISSION" \
     --chain-id "$CHAIN_ID" \
     --rpc "$RPC" \
-    --contract 0x18e56e7b120c7CBD06117A36E94E61a932A5A302 \
+    --contract 0x7BDc2aECC3CDaF0ce5a975adeA1C8d84Fd9Be3D9 \
     --mainnet
 }
 
