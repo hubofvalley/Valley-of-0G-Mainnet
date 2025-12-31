@@ -49,7 +49,6 @@ fi
 
 # Save env vars
 {
-  echo "export NODE_TYPE=\"$NODE_TYPE\""
   echo "export MONIKER=\"$MONIKER\""
   echo "export OG_PORT=\"$OG_PORT\""
   echo "export NODE_TYPE=\"$NODE_TYPE\""
@@ -88,23 +87,25 @@ source ~/.bash_profile
 [ ! -d ~/go/bin ] && mkdir -p ~/go/bin
 go version
 
-# ==== DOWNLOAD ARISTOTLE v1.0.3 ====
+# ==== DOWNLOAD GALILEO v1.0.3 ====
 cd $HOME
 sudo rm -rf aristotle
 wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/1.0.3/aristotle-v1.0.3.tar.gz -O aristotle-v1.0.3.tar.gz
 tar -xzvf aristotle-v1.0.3.tar.gz
-cp -r aristotle-v1.0.3/${NODE_TYPE} aristotle
+mv aristotle-v1.0.3 aristotle
 sudo rm aristotle-v1.0.3.tar.gz
-sudo chmod +x $HOME/aristotle/bin/geth
-sudo chmod +x $HOME/aristotle/bin/0gchaind
+
+# ==== MAKE BINARIES EXECUTABLE ====
+sudo chmod +x $HOME/aristotle/$NODE_TYPE/bin/geth
+sudo chmod +x $HOME/aristotle/$NODE_TYPE/bin/0gchaind
 
 # ==== MOVE BINARIES ====
-cp $HOME/aristotle/bin/geth $HOME/go/bin/0g-geth
-cp $HOME/aristotle/bin/0gchaind $HOME/go/bin/0gchaind
+cp $HOME/aristotle/$NODE_TYPE/bin/geth $HOME/go/bin/0g-geth
+cp $HOME/aristotle/$NODE_TYPE/bin/0gchaind $HOME/go/bin/0gchaind
 
 # ==== INIT CHAIN ====
 mkdir -p $HOME/.0gchaind/
-cp -r $HOME/aristotle/* $HOME/.0gchaind/
+cp -r $HOME/aristotle/$NODE_TYPE/* $HOME/.0gchaind/
 0g-geth init --datadir $HOME/.0gchaind/0g-home/geth-home $HOME/.0gchaind/geth-genesis.json
 0gchaind init "$MONIKER" --home $HOME/.0gchaind/tmp --chaincfg.chain-spec mainnet
 
@@ -129,8 +130,6 @@ sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:${OG_PORT}
 sed -i "s|^proxy_app = .*|proxy_app = \"tcp://127.0.0.1:${OG_PORT}658\"|" $CONFIG/config.toml
 sed -i "s|^pprof_laddr = .*|pprof_laddr = \"0.0.0.0:${OG_PORT}060\"|" $CONFIG/config.toml
 sed -i "s|prometheus_listen_addr = \".*\"|prometheus_listen_addr = \"0.0.0.0:${OG_PORT}660\"|" $CONFIG/config.toml
-sed -i 's/^timeout_commit = .*/timeout_commit = "200ms"/' $CONFIG/config.toml
-
 
 # indexer toggle
 if [ "$ENABLE_INDEXER" = "yes" ]; then
@@ -147,7 +146,6 @@ sed -i "s|^rpc-dial-url *=.*|rpc-dial-url = \"http://localhost:${OG_PORT}551\"|"
 sed -i "s/^pruning *=.*/pruning = \"custom\"/" $CONFIG/app.toml
 sed -i "s/^pruning-keep-recent *=.*/pruning-keep-recent = \"100\"/" $CONFIG/app.toml
 sed -i "s/^pruning-interval *=.*/pruning-interval = \"19\"/" $CONFIG/app.toml
-sed -i 's/^payload-timeout = .*/payload-timeout = "200ms"/' $CONFIG/app.toml
 
 # geth-config.toml
 sed -i "s/HTTPPort = .*/HTTPPort = ${OG_PORT}545/" $GCONFIG
