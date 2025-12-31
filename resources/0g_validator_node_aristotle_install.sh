@@ -96,16 +96,16 @@ mv aristotle-v1.0.3 aristotle
 sudo rm aristotle-v1.0.3.tar.gz
 
 # ==== MAKE BINARIES EXECUTABLE ====
-sudo chmod +x $HOME/aristotle/$NODE_TYPE/bin/geth
-sudo chmod +x $HOME/aristotle/$NODE_TYPE/bin/0gchaind
+sudo chmod +x $HOME/aristotle/bin/geth
+sudo chmod +x $HOME/aristotle/bin/0gchaind
 
 # ==== MOVE BINARIES ====
-cp $HOME/aristotle/$NODE_TYPE/bin/geth $HOME/go/bin/0g-geth
-cp $HOME/aristotle/$NODE_TYPE/bin/0gchaind $HOME/go/bin/0gchaind
+cp $HOME/aristotle/bin/geth $HOME/go/bin/0g-geth
+cp $HOME/aristotle/bin/0gchaind $HOME/go/bin/0gchaind
 
 # ==== INIT CHAIN ====
 mkdir -p $HOME/.0gchaind/
-cp -r $HOME/aristotle/$NODE_TYPE/* $HOME/.0gchaind/
+cp -r $HOME/aristotle/* $HOME/.0gchaind/
 0g-geth init --datadir $HOME/.0gchaind/0g-home/geth-home $HOME/.0gchaind/geth-genesis.json
 0gchaind init "$MONIKER" --home $HOME/.0gchaind/tmp --chaincfg.chain-spec mainnet
 
