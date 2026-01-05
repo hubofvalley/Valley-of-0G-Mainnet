@@ -25,8 +25,8 @@ while true; do
   fi
 done
 
-# Prompt for MONIKER, OG_PORT, Indexer
-read -p "Enter your moniker: " MONIKER
+# Prompt for OG_MONIKER, OG_PORT, Indexer
+read -p "Enter your moniker: " OG_MONIKER
 read -p "Enter your preferred port number: (leave empty to use default: 26) " OG_PORT
 if [ -z "$OG_PORT" ]; then
     OG_PORT=26
@@ -49,7 +49,7 @@ fi
 
 # Save env vars
 {
-  echo "export MONIKER=\"$MONIKER\""
+  echo "export OG_MONIKER=\"$OG_MONIKER\""
   echo "export OG_PORT=\"$OG_PORT\""
   echo "export NODE_TYPE=\"$NODE_TYPE\""
   if [ "$NODE_TYPE" = "validator" ]; then
@@ -107,7 +107,7 @@ cp $HOME/aristotle/bin/0gchaind $HOME/go/bin/0gchaind
 mkdir -p $HOME/.0gchaind/
 cp -r $HOME/aristotle/* $HOME/.0gchaind/
 0g-geth init --datadir $HOME/.0gchaind/0g-home/geth-home $HOME/.0gchaind/geth-genesis.json
-0gchaind init "$MONIKER" --home $HOME/.0gchaind/tmp --chaincfg.chain-spec mainnet
+0gchaind init "$OG_MONIKER" --home $HOME/.0gchaind/tmp --chaincfg.chain-spec mainnet
 
 # ==== COPY KEYS ====
 cp $HOME/.0gchaind/tmp/data/priv_validator_state.json $HOME/.0gchaind/0g-home/0gchaind-home/data/
@@ -124,7 +124,7 @@ GCONFIG="$HOME/.0gchaind/geth-config.toml"
 EXTERNAL_IP=$(curl -4 -s ifconfig.me)
 
 # config.toml
-sed -i "s/^moniker *=.*/moniker = \"$MONIKER\"/" $CONFIG/config.toml
+sed -i "s/^moniker *=.*/moniker = \"$OG_MONIKER\"/" $CONFIG/config.toml
 sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:${OG_PORT}656\"|" $CONFIG/config.toml
 sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:${OG_PORT}657\"|" $CONFIG/config.toml
 sed -i "s|^proxy_app = .*|proxy_app = \"tcp://127.0.0.1:${OG_PORT}658\"|" $CONFIG/config.toml
@@ -249,7 +249,7 @@ sudo systemctl start 0g-geth
 echo -e "\n${GREEN}? 0G Node Installation Completed Successfully!${RESET}"
 echo -e "\n${YELLOW}Node Configuration Summary:${RESET}"
 echo -e "Type: ${CYAN}$NODE_TYPE${RESET}"
-echo -e "Moniker: ${CYAN}$MONIKER${RESET}"
+echo -e "Moniker: ${CYAN}$OG_MONIKER${RESET}"
 echo -e "Port Prefix: ${CYAN}$OG_PORT${RESET}"
 echo -e "Indexer: ${CYAN}$([ "$ENABLE_INDEXER" = "yes" ] && echo "Enabled" || echo "Disabled")${RESET}"
 [ "$NODE_TYPE" = "validator" ] && echo -e "ETH_RPC_URL: ${CYAN}$ETH_RPC_URL${RESET}\nBLOCK_NUM: ${CYAN}$BLOCK_NUM${RESET}"

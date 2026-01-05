@@ -291,7 +291,7 @@ function create_validator() {
     WITHDRAW_GWEI_DEFAULT="${WITHDRAW_GWEI_DEFAULT:-1}"
 
     # Inputs
-    read -p "Enter validator name (moniker): " MONIKER
+    read -p "Enter validator name (moniker): " OG_MONIKER
     read -p "Enter identity (Keybase, optional): " IDENTITY
     read -p "Enter website URL (optional): " WEBSITE
     read -p "Enter security contact email: " EMAIL
@@ -311,7 +311,7 @@ function create_validator() {
     if [ -n "${RPC_INPUT}" ]; then OG_EVM_RPC="$RPC_INPUT"; fi
 
     echo -e "\n${YELLOW}Summary:${RESET}"
-    echo "  Moniker:            $MONIKER"
+    echo "  Moniker:            $OG_MONIKER"
     echo "  Commission (bps):   $COMM_BPS  (~${COMM_PCT}%)"
     echo "  Withdrawal fee:     ${WITHDRAW_GWEI} Gwei"
     echo "  EVM RPC:            $OG_EVM_RPC"
@@ -363,7 +363,7 @@ function create_validator() {
     # 3) Execute init tx via cast if available, else manual instruction
     echo -e "${CYAN}Initializing validator on Staking Contract...${RESET}"
     if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
-        DESC_TUPLE=$(printf '("%s","%s","%s","%s","%s")' "$MONIKER" "$IDENTITY" "$WEBSITE" "$EMAIL" "$DETAILS")
+        DESC_TUPLE=$(printf '("%s","%s","%s","%s","%s")' "$OG_MONIKER" "$IDENTITY" "$WEBSITE" "$EMAIL" "$DETAILS")
         cast send "$STAKING_ADDRESS" \
             'createAndInitializeValidatorIfNecessary((string,string,string,string,string),uint32,uint96,bytes,bytes)' \
             "$DESC_TUPLE" \
@@ -386,7 +386,7 @@ function create_validator() {
               y|yes)
                 ensure_evm_cli_tools prompt || true
                 if command -v cast >/dev/null 2>&1; then
-                  DESC_TUPLE=$(printf '("%s","%s","%s","%s","%s")' "$MONIKER" "$IDENTITY" "$WEBSITE" "$EMAIL" "$DETAILS")
+                  DESC_TUPLE=$(printf '("%s","%s","%s","%s","%s")' "$OG_MONIKER" "$IDENTITY" "$WEBSITE" "$EMAIL" "$DETAILS")
                   cast send "$STAKING_ADDRESS" \
                     'createAndInitializeValidatorIfNecessary((string,string,string,string,string),uint32,uint96,bytes,bytes)' \
                     "$DESC_TUPLE" \
@@ -408,7 +408,7 @@ function create_validator() {
         echo -e "${YELLOW}Manual path (ChainScan UI):${RESET}"
         echo "  1) Open: https://chainscan.0g.ai/address/$STAKING_ADDRESS (Contracts -> Write as Proxy)"
         echo "  2) Call: createAndInitializeValidatorIfNecessary"
-        echo "     - description.moniker         = $MONIKER"
+        echo "     - description.moniker         = $OG_MONIKER"
         echo "     - description.identity        = $IDENTITY"
         echo "     - description.website         = $WEBSITE"
         echo "     - description.securityContact = $EMAIL"
