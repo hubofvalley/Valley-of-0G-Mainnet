@@ -142,6 +142,7 @@ sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:${OG_PORT}
 sed -i "s|^proxy_app = .*|proxy_app = \"tcp://127.0.0.1:${OG_PORT}658\"|" $CONFIG/config.toml
 sed -i "s|^pprof_laddr = .*|pprof_laddr = \"0.0.0.0:${OG_PORT}060\"|" $CONFIG/config.toml
 sed -i "s|prometheus_listen_addr = \".*\"|prometheus_listen_addr = \"0.0.0.0:${OG_PORT}660\"|" $CONFIG/config.toml
+sed -i "s/^timeout_commit *=.*/timeout_commit = \"200ms\"/" $CONFIG/config.toml
 
 # indexer toggle
 if [ "$ENABLE_INDEXER" = "yes" ]; then
@@ -158,6 +159,7 @@ sed -i "s|^rpc-dial-url *=.*|rpc-dial-url = \"http://localhost:${OG_PORT}551\"|"
 sed -i "s/^pruning *=.*/pruning = \"custom\"/" $CONFIG/app.toml
 sed -i "s/^pruning-keep-recent *=.*/pruning-keep-recent = \"100\"/" $CONFIG/app.toml
 sed -i "s/^pruning-interval *=.*/pruning-interval = \"19\"/" $CONFIG/app.toml
+sed -i "s/^payload-timeout *=.*/payload-timeout = \"200ms\"/" $CONFIG/app.toml
 
 # geth-config.toml
 sed -i "s/HTTPPort = .*/HTTPPort = ${OG_PORT}545/" $GCONFIG
