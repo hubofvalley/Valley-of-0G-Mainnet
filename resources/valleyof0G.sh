@@ -1581,7 +1581,7 @@ function approve_ai_alignment_node() {
 
     read -p "RPC endpoint [default https://evmrpc.0g.ai]: " RPC
     RPC=${RPC:-https://evmrpc.0g.ai}
-    CHAIN_ID=42161
+    CHAIN_ID=16661
 
     echo -e "${GREEN}Executing approval command...${RESET}"
     (cd "$APP_DIR" && ./"$(basename "$BIN_PATH")" approve \
@@ -1590,7 +1590,7 @@ function approve_ai_alignment_node() {
         --destNode "$DESTINATION_ADDR" \
         --chain-id "$CHAIN_ID" \
         --rpc "$RPC" \
-        --contract 0xdD158B8A76566bC0c342893568e8fd3F08A9dAac \
+        --contract 0x7BDc2aECC3CDaF0ce5a975adeA1C8d84Fd9Be3D9 \
         --mainnet)
 
     echo -e "${GREEN}Approval tx submitted. Verify on-chain explorers.${RESET}"
