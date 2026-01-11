@@ -1579,8 +1579,8 @@ function approve_ai_alignment_node() {
         return
     fi
 
-    read -p "RPC endpoint [default https://arb1.arbitrum.io/rpc]: " RPC
-    RPC=${RPC:-https://arb1.arbitrum.io/rpc}
+    read -p "RPC endpoint [default https://evmrpc.0g.ai]: " RPC
+    RPC=${RPC:-https://evmrpc.0g.ai}
     CHAIN_ID=42161
 
     echo -e "${GREEN}Executing approval command...${RESET}"
