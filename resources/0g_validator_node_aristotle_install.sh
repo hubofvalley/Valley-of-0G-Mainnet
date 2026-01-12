@@ -227,7 +227,7 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# geth.service
+# 0g-geth.service
 sudo tee /etc/systemd/system/0g-geth.service > /dev/null <<EOF
 [Unit]
 Description=0g Geth Node Service
@@ -248,6 +248,7 @@ ExecStart=$HOME/go/bin/0g-geth \
   --ws.addr 127.0.0.1 \
   --ws.port ${OG_PORT}546 \
   --authrpc.port ${OG_PORT}551 \
+  --discovery.port ${OG_PORT}303 \
   --port ${OG_PORT}303 \
   --networkid 16661
 Restart=on-failure
