@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -88,7 +89,6 @@ ${GREEN}Security Best Practices${RESET}
 
 ${GREEN}Disclaimer${RESET}
 - The authors of this script are not responsible for any misuse or damage caused by the use of this script.
-- Use this script at your own risk.
 
 ${GREEN}Contact${RESET}
 - If you have any concerns or questions, please contact us at letsbuidltogether@grandvalleys.com.
