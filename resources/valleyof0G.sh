@@ -99,6 +99,8 @@ Grand Valley 0G public endpoints:${RESET}
 - cosmos-rpc: ${BLUE}https://lightnode-rpc-mainnet-0g.grandvalleys.com${RESET}
 - evm-rpc: ${BLUE}https://lightnode-json-rpc-mainnet-0g.grandvalleys.com${RESET}
 - cosmos rest-api: ${BLUE}https://lightnode-api-mainnet-0g.grandvalleys.com${RESET}
+- cosmos ws: ${BLUE}wss://lightnode-rpc-mainnet-0g.grandvalleys.com/websocket${RESET}
+- evm ws: ${BLUE}wss://lightnode-wss-mainnet-0g.grandvalleys.com${RESET}
 - peer: ${BLUE}c27d9181c99091aa2fe2dbc3f28148cdce534f22@peer-mainnet-0g.grandvalleys.com:37656${RESET}
 - endode: enode://c79ca76c97446ed4509db37a1297f4697e49941dda42bbe46cd1651edfc41a5acdf3e97c42dbe42f52be6a5684266f3e2918cb8630b22e39c13c194846501f7f@enode-mainnet-0g.grandvalleys.com:28303${RESET}
 
