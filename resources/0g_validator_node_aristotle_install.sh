@@ -239,7 +239,13 @@ WorkingDirectory=$HOME/.0gchaind
 ExecStart=$HOME/go/bin/0g-geth \
   --config $HOME/.0gchaind/geth-config.toml \
   --datadir $HOME/.0gchaind/0g-home/geth-home \
+  --http \
+  --http.api eth,net,web3,txpool,trace \
+  --http.addr 127.0.0.1 \
   --http.port ${OG_PORT}545 \
+  --ws \
+  --ws.api eth,web3,net,txpool \
+  --ws.addr 127.0.0.1 \
   --ws.port ${OG_PORT}546 \
   --authrpc.port ${OG_PORT}551 \
   --port ${OG_PORT}303 \
@@ -256,8 +262,8 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable 0gchaind
 sudo systemctl enable 0g-geth
-sudo systemctl start 0gchaind
-sudo systemctl start 0g-geth
+sudo systemctl restart 0gchaind
+sudo systemctl restart 0g-geth
 
 # ==== DONE ====
 echo -e "\n${GREEN}? 0G Node Installation Completed Successfully!${RESET}"
