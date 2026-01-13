@@ -1188,11 +1188,11 @@ function show_node_status() {
     echo "Execution client (0g-geth) block height: $geth_block_height"
     block_difference=$(( realtime_block_height - node_height ))
     echo "Real-time Block Height: $realtime_block_height"
-    echo -e "${YELLOW}Block Difference:${NC} $block_difference"
+    echo -e "${YELLOW}Block Difference:${RESET} $block_difference"
 
     # Add explanation for negative values
     if (( block_difference < 0 )); then
-        echo -e "${GREEN}Note:${NC} A negative value is normal - this means 0G Official's Mainnet RPC block height is currently behind your node's height"
+        echo -e "${GREEN}Note:${RESET} A negative value is normal - this means 0G Official's Mainnet RPC block height is currently behind your node's height"
     fi
     echo -e "\n${YELLOW}Press Enter to go back to main menu${RESET}"
     read -r
