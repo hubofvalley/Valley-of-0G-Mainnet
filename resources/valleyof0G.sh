@@ -1162,8 +1162,9 @@ function delete_validator_node() {
 }
 
 function show_validator_logs() {
-    echo "Displaying Consensus Client and Execution Client (Geth) Logs:"
+    trap 'echo "Displaying Consensus Client and Execution Client (Geth) Logs:";' INT
     sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -u $OG_GETH_SERVICE -fn 100 --no-pager
+    trap - INT
     menu
 }
 
