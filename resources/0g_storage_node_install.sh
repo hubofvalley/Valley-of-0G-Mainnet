@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RESET='\033[0m'
+
 # Define new boot nodes
 BOOT_NODES=(
   "/ip4/47.251.79.83/udp/1234/p2p/16Uiu2HAkvJYQABP1MdvfWfUZUzGLx1sBSDZ2AT92EFKcMCCPVawV"
@@ -13,9 +19,22 @@ BOOT_NODES=(
 # Function to query the latest block number from a JSON-RPC endpoint
 query_block_number() {
     local endpoint=$1
-    local block_number=$(curl -s -X POST $endpoint -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
-    echo $block_number
-}
+    local res
+    res=$(curl -s -X POST "$endpoint" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}')
+    local hex
+    hex=$(echo "$res" | jq -r '.result // empty')
+    if [ -z "$hex" ] || [ "$hex" = "null" ]; then
+        echo ""
+        return 1
+    fi
+    # Convert hex (0x...) to decimal
+    local block_number
+    block_number=$((hex))
+    echo "$block_number"
+} 
+
+# Ensure required tooling is available
+command -v jq >/dev/null 2>&1 || { echo "jq is required but not installed. Installing..."; sudo apt-get update -y && sudo apt-get install -y jq; }
 
 # Function to prompt user to choose JSON-RPC endpoint
 choose_json_rpc_endpoint() {
@@ -60,9 +79,13 @@ sudo rm -f /etc/systemd/system/zgs.service
 sudo rm -rf $HOME/0g-storage-node
 echo -e "${GREEN}Previous storage node deleted successfully.${RESET}"
 
-# Prompt user for private key
-read -p "Enter your private key: " PRIVATE_KEY
-echo "private key: $PRIVATE_KEY"
+# Prompt user for private key (kept hidden)
+read -p "Enter your private key: " -s PRIVATE_KEY
+echo -e "\nPrivate key has been read and will be kept hidden for security."
+if [ -z "$PRIVATE_KEY" ]; then
+    echo "Private key cannot be empty. Exiting."
+    exit 1
+fi
 
 # Set contract type to turbo by default
 CONTRACT_TYPE="turbo"
@@ -89,16 +112,19 @@ wget "https://golang.org/dl/go$ver.linux-amd64.tar.gz" && \
 sudo rm -rf /usr/local/go && \
 sudo tar -C /usr/local -xzf "go$ver.linux-amd64.tar.gz" && \
 rm "go$ver.linux-amd64.tar.gz" && \
-echo "export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin" >> ~/.bash_profile && \
+# Use single quotes so current PATH isn't expanded into the file at append time
+echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> ~/.bash_profile && \
 source ~/.bash_profile && \
 go version
 
-# 3. Install rustup
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# 3. Install rustup (non-interactive)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && 
+# Ensure cargo is available in the current session
+source "$HOME/.cargo/env" || true
 
 # 4. Set vars
 echo 'export ZGS_LOG_SYNC_BLOCK="0"' >> ~/.bash_profile
-echo "export ZGS_NODE_VERSION="v1.1.0"" >> ~/.bash_profile
+echo 'export ZGS_NODE_VERSION="v1.1.0"' >> ~/.bash_profile
 echo "export BLOCKCHAIN_RPC_ENDPOINT=\"$BLOCKCHAIN_RPC_ENDPOINT\"" >> ~/.bash_profile
 echo 'export LOG_CONTRACT_ADDRESS="'"0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"'"' >> ~/.bash_profile
 source ~/.bash_profile
@@ -106,7 +132,7 @@ source ~/.bash_profile
 echo -e "\n\033[31mCHECK YOUR STORAGE NODE VARIABLES\033[0m\nZGS_NODE_VERSION: $ZGS_NODE_VERSION\nLOG_CONTRACT_ADDRESS: $LOG_CONTRACT_ADDRESS\nZGS_LOG_SYNC_BLOCK: $ZGS_LOG_SYNC_BLOCK\nBLOCKCHAIN_RPC_ENDPOINT: $BLOCKCHAIN_RPC_ENDPOINT\n\n" "\033[3m\"Let's Buidl 0G Together\" - Grand Valley\033[0m"
 
 # Check JSON-RPC sync
-curl -s -X POST $BLOCKCHAIN_RPC_ENDPOINT -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n"
+echo "JSON-RPC latest block: $(query_block_number "$BLOCKCHAIN_RPC_ENDPOINT" || echo 'unknown')"
 
 # 5. Download binary
 cd $HOME
@@ -134,12 +160,13 @@ if [ "$CONTRACT_TYPE" == "turbo" ]; then
 fi
 
 sed -i "
-s|^\s*#\s*miner_key\s*=.*|miner_key = \"$PRIVATE_KEY\"|
-s|^\s*#\s*listen_address\s*=.*|listen_address = \"0.0.0.0:5678\"|
-s|^\s*#\s*listen_address_admin\s*=.*|listen_address_admin = \"127.0.0.1:5679\"|
+s|^\s*#\?\s*miner_key\s*=.*|miner_key = \"$PRIVATE_KEY\"|
+s|^\s*#\?\s*listen_address\s*=.*|listen_address = \"0.0.0.0:5678\"|
+s|^\s*#\?\s*listen_address_admin\s*=.*|listen_address_admin = \"127.0.0.1:5679\"|
 s|^\s*#\?\s*rpc_enabled\s*=.*|rpc_enabled = true|
-s|^\s*#\?\s*log_sync_start_block_number\s*=.*|log_sync_start_block_number = 326165|
+s|^\s*#\?\s*log_sync_start_block_number\s*=.*|log_sync_start_block_number = 2387557|
 s|^\s*#\?\s*blockchain_rpc_endpoint\s*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|
+s|^\s*#\?\s*network_boot_nodes\s*=.*|network_boot_nodes = [\"/ip4/34.66.131.173/udp/1234/p2p/16Uiu2HAmG81UgZ1JJLx9T2HqELgJNP36ChHzYkCdA9HdxvAbb5jQ\",\"/ip4/34.60.163.4/udp/1234/p2p/16Uiu2HAmL3DoA7e7mbxs7CkeCPtNrAcfJFFtLpJDr2HWuR6QwJ8k\",\"/ip4/34.169.236.186/udp/1234/p2p/16Uiu2HAm489RdhEgZUFmNTR4jdLEE4HjrvwaPCkEpSYSgvqi1CbR\",\"/ip4/34.71.110.60/udp/1234/p2p/16Uiu2HAmBfGfbLNRegcqihiuXhgSXWNpgiGm6EwW2SYexfPUNUHQ\"]|
 s|^\s*#\?\s*log_contract_address\s*=.*|log_contract_address = \"0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526\"|
 s|^\s*#\?\s*mine_contract_address\s*=.*|mine_contract_address = \"0xCd01c5Cd953971CE4C2c9bFb95610236a7F414fe\"|
 s|^\s*#\?\s*reward_contract_address\s*=.*|reward_contract_address = \"0x457aC76B58ffcDc118AABD6DbC63ff9072880870\"|
