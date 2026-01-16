@@ -1182,11 +1182,16 @@ function show_geth_logs() {
 
 function show_node_status() {
     port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+57' "$HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml") && curl "http://127.0.0.1:$port/status" | jq
-    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
     geth_block_height=$(0g-geth --exec "eth.blockNumber" attach $HOME/.0gchaind/0g-home/geth-home/geth.ipc)
+    consensus_peers=$(curl -s "http://127.0.0.1:$port/net_info" | jq -r '.result.n_peers // "0"')
+    execution_peers_raw=$(geth --exec "net.peerCount" attach $HOME/.0gchaind/0g-home/geth-home/geth.ipc)
+    execution_peers=$(printf "%d" "$execution_peers_raw" 2>/dev/null || echo "$execution_peers_raw")
+    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
     node_height=$(curl -s "http://127.0.0.1:$port/status" | jq -r '.result.sync_info.latest_block_height')
     echo "Consensus client block height: $node_height"
     echo "Execution client (0g-geth) block height: $geth_block_height"
+    echo "Consensus client peers connected: $consensus_peers"
+    echo "Execution client peers connected: $execution_peers"
     block_difference=$(( realtime_block_height - node_height ))
     echo "Real-time Block Height: $realtime_block_height"
     echo -e "${YELLOW}Block Difference:${RESET} $block_difference"
