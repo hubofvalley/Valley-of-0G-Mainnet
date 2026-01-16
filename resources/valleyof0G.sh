@@ -1760,6 +1760,7 @@ function menu() {
     echo "    j. Delete Storage Node"
     echo "    k. Delete Storage KV"
     echo "    l. Delete AI Alignment Node"
+    echo "    m. Schedule Stop/Restart Validator Node"
     echo -e "${GREEN}6. Install the 0gchain App (v1.0.3) only to execute transactions without running a node${RESET}"
     echo -e "${GREEN}7. Show Grand Valley's Endpoints${RESET}"
     echo -e "${YELLOW}8. Show Guidelines${RESET}"
@@ -1844,6 +1845,7 @@ function menu() {
                 j) delete_storage_node ;;
                 k) delete_storage_kv ;;
                 l) delete_ai_alignment_node ;;
+                m) schedule_validator_node ;;
                 *) echo "Invalid sub-option. Please try again." ;;
             esac
             ;;
