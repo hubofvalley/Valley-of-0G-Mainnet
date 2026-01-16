@@ -1205,6 +1205,19 @@ function show_node_status() {
     menu
 }
 
+function schedule_validator_node() {
+    echo -e "${YELLOW}This feature will:${RESET}"
+    echo -e "${GREEN}- Run:${RESET} sudo apt-get update"
+    echo -e "${GREEN}- Install dependency:${RESET} at"
+    echo -e "${GREEN}- Enable and start:${RESET} atd (scheduler service)"
+    echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}0gchaind.service${RESET} + ${CYAN}0g-geth.service${RESET} via ${ORANGE}at${RESET}"
+    echo -e "${GREEN}- List or remove:${RESET} scheduled jobs from the at queue"
+    echo -e "\n${YELLOW}Press Enter to continue...${RESET}"
+    read -r
+    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_node_schedule.sh)
+    menu
+}
+
 function stop_validator_node() {
     sudo systemctl stop $OG_CONSENSUS_CLIENT_SERVICE $OG_GETH_SERVICE
     menu
