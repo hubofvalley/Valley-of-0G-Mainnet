@@ -1169,14 +1169,16 @@ function show_validator_logs() {
 }
 
 function show_consensus_client_logs() {
-    echo "Displaying Consensus Client Logs:"
-    sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -fn 100
+    trap 'echo "Displaying Consensus Client Logs:";' INT
+    sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -fn 100 --no-pager
+    trap - INT
     menu
 }
 
 function show_geth_logs() {
-    echo "Displaying Execution Client (Geth) Logs:"
-    sudo journalctl -u $OG_GETH_SERVICE -fn 100
+    trap 'echo "Displaying Execution Client (Geth) Logs:";' INT
+    sudo journalctl -u $OG_GETH_SERVICE -fn 100 --no-pager
+    trap - INT
     menu
 }
 

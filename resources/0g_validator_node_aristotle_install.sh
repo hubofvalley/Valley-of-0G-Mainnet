@@ -196,6 +196,8 @@ ExecStart=$HOME/go/bin/0gchaind start \
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -221,6 +223,8 @@ ExecStart=$HOME/go/bin/0gchaind start \
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -254,6 +258,8 @@ ExecStart=$HOME/go/bin/0g-geth \
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
