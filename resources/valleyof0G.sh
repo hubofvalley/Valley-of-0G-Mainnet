@@ -1163,7 +1163,7 @@ function delete_validator_node() {
 
 function show_validator_logs() {
     trap 'echo "Displaying Consensus Client and Execution Client (Geth) Logs:";' INT
-    sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -u $OG_GETH_SERVICE -fn 100 --no-pager
+    sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -u $OG_GETH_SERVICE -fn 100 -o cat || true
     trap - INT
     menu
 }
@@ -1184,11 +1184,16 @@ function show_geth_logs() {
 
 function show_node_status() {
     port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+57' "$HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml") && curl "http://127.0.0.1:$port/status" | jq
-    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
     geth_block_height=$(0g-geth --exec "eth.blockNumber" attach $HOME/.0gchaind/0g-home/geth-home/geth.ipc)
+    consensus_peers=$(curl -s "http://127.0.0.1:$port/net_info" | jq -r '.result.n_peers // "0"')
+    execution_peers_raw=$(geth --exec "net.peerCount" attach $HOME/.0gchaind/0g-home/geth-home/geth.ipc)
+    execution_peers=$(printf "%d" "$execution_peers_raw" 2>/dev/null || echo "$execution_peers_raw")
+    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
     node_height=$(curl -s "http://127.0.0.1:$port/status" | jq -r '.result.sync_info.latest_block_height')
     echo "Consensus client block height: $node_height"
     echo "Execution client (0g-geth) block height: $geth_block_height"
+    echo "Consensus client peers connected: $consensus_peers"
+    echo "Execution client peers connected: $execution_peers"
     block_difference=$(( realtime_block_height - node_height ))
     echo "Real-time Block Height: $realtime_block_height"
     echo -e "${YELLOW}Block Difference:${RESET} $block_difference"
@@ -1199,6 +1204,19 @@ function show_node_status() {
     fi
     echo -e "\n${YELLOW}Press Enter to go back to main menu${RESET}"
     read -r
+    menu
+}
+
+function schedule_validator_node() {
+    echo -e "${YELLOW}This feature will:${RESET}"
+    echo -e "${GREEN}- Run:${RESET} sudo apt-get update"
+    echo -e "${GREEN}- Install dependency:${RESET} at"
+    echo -e "${GREEN}- Enable and start:${RESET} atd (scheduler service)"
+    echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}0gchaind.service${RESET} + ${CYAN}0g-geth.service${RESET} via ${ORANGE}at${RESET}"
+    echo -e "${GREEN}- List or remove:${RESET} scheduled jobs from the at queue"
+    echo -e "\n${YELLOW}Press Enter to continue...${RESET}"
+    read -r
+    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_node_schedule.sh)
     menu
 }
 
@@ -1744,6 +1762,7 @@ function menu() {
     echo "    j. Delete Storage Node"
     echo "    k. Delete Storage KV"
     echo "    l. Delete AI Alignment Node"
+    echo "    m. Schedule Stop/Restart Validator Node"
     echo -e "${GREEN}6. Install the 0gchain App (v1.0.3) only to execute transactions without running a node${RESET}"
     echo -e "${GREEN}7. Show Grand Valley's Endpoints${RESET}"
     echo -e "${YELLOW}8. Show Guidelines${RESET}"
@@ -1828,6 +1847,7 @@ function menu() {
                 j) delete_storage_node ;;
                 k) delete_storage_kv ;;
                 l) delete_ai_alignment_node ;;
+                m) schedule_validator_node ;;
                 *) echo "Invalid sub-option. Please try again." ;;
             esac
             ;;
