@@ -25,7 +25,7 @@ A validator node participates in 0G's consensus mechanism by validating transact
 
 1. Launch Valley of 0G:
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
+   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
    ```
 2. Select **"Deploy Validator Node"** from the menu
 3. Follow the interactive prompts
@@ -53,7 +53,7 @@ Default ports (adjustable during install):
 After your node is fully synced:
 
 1. Ensure you have 500+ OG in your wallet (plus gas)
-2. Run the main menu: `bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)`
+2. Run the main menu: `bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)`
 3. Select "Create Validator"
 4. Follow the prompts to configure:
    - Moniker (validator name)
@@ -67,7 +67,7 @@ After your node is fully synced:
 
 1. Launch Valley of 0G:
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
+   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
    ```
 2. Select **"Manage Validator Node"** → **"Update Validator Node Version"**
 

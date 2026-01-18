@@ -18,7 +18,7 @@ Storage KV nodes provide key-value storage services, maintaining KV streams for 
 
 1. Launch Valley of 0G:
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
+   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
    ```
 2. Select **"Storage KV"** → **"Deploy Storage KV"**
 3. Follow the interactive prompts

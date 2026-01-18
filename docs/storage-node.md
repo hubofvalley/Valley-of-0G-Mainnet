@@ -19,7 +19,7 @@ Storage nodes provide data availability and storage services for the 0G network.
 
 1. Launch Valley of 0G:
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
+   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
    ```
 2. Select **"Storage Node"** → **"Deploy Storage Node"**
 3. Follow the interactive prompts

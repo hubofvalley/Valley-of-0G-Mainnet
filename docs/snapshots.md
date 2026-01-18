@@ -10,7 +10,7 @@ Snapshots allow you to quickly sync your node by downloading a pre-synced databa
 
 1. Launch Valley of 0G:
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
+   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
    ```
 
 2. Navigate to your node type and select the snapshot option:

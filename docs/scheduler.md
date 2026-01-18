@@ -13,7 +13,7 @@ The scheduler uses the Linux `at` command to schedule node operations at specifi
 
 1. Launch Valley of 0G:
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
+   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
    ```
 2. Select **"Node Scheduler"** from the menu
 
