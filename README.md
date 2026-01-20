@@ -65,7 +65,6 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | [`valleyof0G.sh`](resources/valleyof0G.sh) | Main interactive menu for all operations |
 | [`0g_validator_node_aristotle_install.sh`](resources/0g_validator_node_aristotle_install.sh) | Deploy validator node (Aristotle chain) |
 | [`0g_validator_node_update_manual.sh`](resources/0g_validator_node_update_manual.sh) | Manual validator update |
-| [`0g_validator_node_update_cosmovisor.sh`](resources/0g_validator_node_update_cosmovisor.sh) | Cosmovisor-based validator update |
 | [`0g_storage_node_install.sh`](resources/0g_storage_node_install.sh) | Install storage node |
 | [`0g_storage_node_update.sh`](resources/0g_storage_node_update.sh) | Update storage node |
 | [`0g_storage_node_change.sh`](resources/0g_storage_node_change.sh) | Modify storage node config |
