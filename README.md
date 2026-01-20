@@ -72,7 +72,6 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | [`0g_storage_kv_update.sh`](resources/0g_storage_kv_update.sh) | Update storage KV node |
 | [`apply_snapshot.sh`](resources/apply_snapshot.sh) | Apply chain snapshot |
 | [`0g_node_schedule.sh`](resources/0g_node_schedule.sh) | Schedule node start/stop jobs |
-| [`cosmovisor_migration.sh`](resources/cosmovisor_migration.sh) | Migrate to Cosmovisor |
 
 ## 🔧 Current Versions
 
