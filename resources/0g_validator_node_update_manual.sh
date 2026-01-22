@@ -28,8 +28,6 @@ function update_version {
     sudo chmod +x $HOME/go/bin/0g-geth
     sudo chmod +x $HOME/go/bin/0gchaind
 
-    # Cleanup extracted folder
-    rm -rf aristotle-${VERSION}
 
     # Restart services
     sudo systemctl daemon-reload
