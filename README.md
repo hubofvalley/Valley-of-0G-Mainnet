@@ -77,7 +77,7 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 
 | Component | Version |
 |-----------|---------|
-| Validator Node (0gchaind) | v1.0.3 |
+| Validator Node (0gchaind) | v1.0.4 |
 | Storage Node | v1.1.0 |
 | Storage KV | v1.4.0 |
 | Chain | 0gchain-16661 (Aristotle) |

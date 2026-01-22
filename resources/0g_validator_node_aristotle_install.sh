@@ -70,7 +70,7 @@ sudo systemctl disable 0gchaind 2>/dev/null || true
 sudo systemctl disable 0g-geth 0ggeth 2>/dev/null || true
 sudo rm -f /etc/systemd/system/0gchaind.service /etc/systemd/system/0g-geth.service /etc/systemd/system/0ggeth.service
 sudo rm -f $HOME/go/bin/0gchaind $HOME/go/bin/0g-geth $HOME/go/bin/0ggeth
-rm -rf $HOME/.0gchaind $HOME/aristotle $HOME/aristotle-v1.0.3 $HOME/aristotle-v1.0.3.tar.gz
+rm -rf $HOME/.0gchaind $HOME/aristotle $HOME/aristotle-v1.0.4 $HOME/aristotle-v1.0.4.tar.gz
 
 echo "? Cleanup complete."
 
@@ -99,13 +99,13 @@ if [[ "$SETUP_UFW" =~ ^[Yy]$ ]]; then
     sudo ufw status verbose
 fi
 
-# ==== DOWNLOAD GALILEO v1.0.3 ====
+# ==== DOWNLOAD ARISTOTLE v1.0.4 ====
 cd $HOME
 sudo rm -rf aristotle
-wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/1.0.3/aristotle-v1.0.3.tar.gz -O aristotle-v1.0.3.tar.gz
-tar -xzvf aristotle-v1.0.3.tar.gz
-mv aristotle-v1.0.3 aristotle
-sudo rm aristotle-v1.0.3.tar.gz
+wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/1.0.4/aristotle-v1.0.4.tar.gz -O aristotle-v1.0.4.tar.gz
+tar -xzvf aristotle-v1.0.4.tar.gz
+mv aristotle-v1.0.4 aristotle
+sudo rm aristotle-v1.0.4.tar.gz
 
 # ==== MAKE BINARIES EXECUTABLE ====
 sudo chmod +x $HOME/aristotle/bin/geth

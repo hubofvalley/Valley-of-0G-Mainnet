@@ -32,7 +32,7 @@ A validator node participates in 0G's consensus mechanism by validating transact
 
 ### What Gets Installed
 
-- **0gchaind** - Consensus client (v1.0.3)
+- **0gchaind** - Consensus client (v1.0.4)
 - **0g-geth** - Execution client
 - Systemd services: `0gchaind.service`, `0g-geth.service`
 - Data directory: `$HOME/.0gchaind`
