@@ -9,9 +9,23 @@ CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
 ORANGE='\033[38;5;214m'
 RESET='\033[0m'
+# Service Name Detection - Ask Once, Remember Forever
+source $HOME/.bash_profile 2>/dev/null
 
-# Service file variables
-OG_CONSENSUS_CLIENT_SERVICE="0gchaind.service"
+if [ -z "$OG_SERVICE_NAME" ]; then
+    echo -e "${YELLOW}Service name configuration not found.${RESET}"
+    read -p "Enter Consensus Service Name (default '0gchaind'): " INPUT_SVC
+    OG_SERVICE_NAME=${INPUT_SVC:-0gchaind}
+    echo "export OG_SERVICE_NAME=\"$OG_SERVICE_NAME\"" >> $HOME/.bash_profile
+    export OG_SERVICE_NAME
+fi
+
+if [ -z "$OG_GETH_SERVICE_NAME" ]; then
+    read -p "Enter Geth Service Name (default '0g-geth'): " INPUT_GETH
+    OG_GETH_SERVICE_NAME=${INPUT_GETH:-0g-geth}
+    echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\"" >> $HOME/.bash_profile
+    export OG_GETH_SERVICE_NAME
+fi
 
 LOGO="
  __      __     _  _                        __    ___    _____ 
@@ -43,8 +57,8 @@ ${YELLOW}| Category  | Requirements                   |
 | Bandwidth | 100 MBps for Download / Upload |${RESET}
 
 validator node current binaries version: ${CYAN}v1.0.4${RESET}
-consensus client service file name: ${CYAN}0gchaind.service${RESET}
-0g-geth service file name: ${CYAN}0g-geth.service${RESET}
+- consensus client service file name: ${CYAN}\${OG_SERVICE_NAME}.service${RESET}
+- 0g-geth service file name: ${CYAN}\${OG_GETH_SERVICE_NAME}.service${RESET}
 current chain : ${CYAN}0gchain-16661 (Aristotle)${RESET}
 
 ------------------------------------------------------------------
@@ -124,18 +138,6 @@ ${GREEN}Connect with Grand Valley:${RESET}
 - Email: ${BLUE}letsbuidltogether@grandvalleys.com${RESET}
 "
 
-# Function to detect the service file name
-function detect_geth_service_file() {
-  if [[ -f "/etc/systemd/system/0g-geth.service" ]]; then
-    OG_GETH_SERVICE="0g-geth.service"
-  elif [[ -f "/etc/systemd/system/0ggeth.service" ]]; then
-    OG_GETH_SERVICE="0ggeth.service"
-  else
-    OG_GETH_SERVICE="Not found"
-    echo -e "${RED}No execution client service file found (0g-geth.service or 0ggeth.service). Continuing without setting service file name.${RESET}"
-  fi
-}
-
 # Display LOGO and wait for user input to continue
 echo -e "$LOGO"
 echo -e "$PRIVACY_SAFETY_STATEMENT"
@@ -147,13 +149,7 @@ echo -e "$INTRO"
 echo -e "$ENDPOINTS"
 echo -e "${YELLOW}\nPress Enter to continue${RESET}"
 read -r
-detect_geth_service_file #(enabled as requested)
 echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> ~/.bash_profile
-# echo "export OG_CHAIN_ID="0gchain-16661"" >> $HOME/.bash_profile
-# echo "export SERVICE_FILE_NAME=\"$SERVICE_FILE_NAME\"" >> ~/.bash_profile
-# echo "export DAEMON_NAME=0gchaind" >> ~/.bash_profile
-# echo "export DAEMON_HOME=$(find $HOME -type d -name ".0gchain" -print -quit)" >> ~/.bash_profile
-# echo "export DAEMON_DATA_BACKUP_DIR=$(find "$HOME/.0gchain/cosmovisor" -type d -name "backup" -print -quit)" >> ~/.bash_profile
 source $HOME/.bash_profile
 
 # Validator Node Functions
@@ -1150,9 +1146,9 @@ function ensure_private_key() {
 }
 
 function delete_validator_node() {
-    sudo systemctl stop $OG_CONSENSUS_CLIENT_SERVICE $OG_GETH_SERVICE
-    sudo systemctl disable $OG_CONSENSUS_CLIENT_SERVICE $OG_GETH_SERVICE
-    sudo rm -rf /etc/systemd/system/$OG_CONSENSUS_CLIENT_SERVICE $OG_GETH_SERVICE
+    sudo systemctl stop ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
+    sudo systemctl disable ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
+    sudo rm -rf /etc/systemd/system/${OG_SERVICE_NAME}.service /etc/systemd/system/${OG_GETH_SERVICE_NAME}.service
     sudo rm -r $HOME/aristotle
     sudo rm -r $HOME/.0gchaind
     sudo rm -r $HOME/aristotle-v1.0.4
@@ -1163,21 +1159,21 @@ function delete_validator_node() {
 
 function show_validator_logs() {
     trap 'echo "Displaying Consensus Client and Execution Client (Geth) Logs:";' INT
-    sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -u $OG_GETH_SERVICE -fn 100 -o cat || true
+    sudo journalctl -u ${OG_SERVICE_NAME} -u ${OG_GETH_SERVICE_NAME} -fn 100 -o cat || true
     trap - INT
     menu
 }
 
 function show_consensus_client_logs() {
     trap 'echo "Displaying Consensus Client Logs:";' INT
-    sudo journalctl -u $OG_CONSENSUS_CLIENT_SERVICE -fn 100 --no-pager
+    sudo journalctl -u ${OG_SERVICE_NAME} -fn 100 --no-pager
     trap - INT
     menu
 }
 
 function show_geth_logs() {
     trap 'echo "Displaying Execution Client (Geth) Logs:";' INT
-    sudo journalctl -u $OG_GETH_SERVICE -fn 100 --no-pager
+    sudo journalctl -u ${OG_GETH_SERVICE_NAME} -fn 100 --no-pager
     trap - INT
     menu
 }
@@ -1212,7 +1208,7 @@ function schedule_validator_node() {
     echo -e "${GREEN}- Run:${RESET} sudo apt-get update"
     echo -e "${GREEN}- Install dependency:${RESET} at"
     echo -e "${GREEN}- Enable and start:${RESET} atd (scheduler service)"
-    echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}0gchaind.service${RESET} + ${CYAN}0g-geth.service${RESET} via ${ORANGE}at${RESET}"
+    echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}${OG_SERVICE_NAME}.service${RESET} + ${CYAN}${OG_GETH_SERVICE_NAME}.service${RESET} via ${ORANGE}at${RESET}"
     echo -e "${GREEN}- List or remove:${RESET} scheduled jobs from the at queue"
     echo -e "\n${YELLOW}Press Enter to continue...${RESET}"
     read -r
@@ -1221,13 +1217,13 @@ function schedule_validator_node() {
 }
 
 function stop_validator_node() {
-    sudo systemctl stop $OG_CONSENSUS_CLIENT_SERVICE $OG_GETH_SERVICE
+    sudo systemctl stop ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
     menu
 }
 
 function restart_validator_node() {
     sudo systemctl daemon-reload
-    sudo systemctl restart $OG_CONSENSUS_CLIENT_SERVICE $OG_GETH_SERVICE
+    sudo systemctl restart ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
     menu
 }
 
