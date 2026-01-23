@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Source environment variables
+source $HOME/.bash_profile 2>/dev/null
+
+# Set defaults for service names and resolve at runtime
+OG_SERVICE_NAME=${OG_SERVICE_NAME:-0gchaind}
+OG_GETH_SERVICE_NAME=${OG_GETH_SERVICE_NAME:-0g-geth}
+
 RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
 BLUE=$'\033[0;34m'
@@ -241,7 +248,7 @@ while true; do
             pause_return
             ;;
         2)
-            if ! schedule_jobs "stop/disable" $'systemctl stop 0gchaind 0g-geth\nsystemctl disable 0gchaind 0g-geth'; then
+            if ! schedule_jobs "stop/disable" "systemctl stop ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}"$'\n'"systemctl disable ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}"; then
                 rc=$?
                 if (( rc == 2 )); then
                     echo -e "${YELLOW}Returning to main menu...${RESET}"
@@ -253,7 +260,7 @@ while true; do
             pause_return
             ;;
         3)
-            if ! schedule_jobs "restart/enable" $'systemctl daemon-reload\nsystemctl enable 0gchaind 0g-geth\nsystemctl restart 0gchaind 0g-geth'; then
+            if ! schedule_jobs "restart/enable" "systemctl daemon-reload"$'\n'"systemctl enable ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}"$'\n'"systemctl restart ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}"; then
                 rc=$?
                 if (( rc == 2 )); then
                     echo -e "${YELLOW}Returning to main menu...${RESET}"
