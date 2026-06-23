@@ -242,14 +242,14 @@ function apply_snapshot() {
 
 function install_0gchain_app() {
     cd $HOME || return
-    echo "Downloading and installing 0gchaind v1.0.4..."
+    echo "Downloading and installing 0gchaind v1.0.6..."
     
     # Download and extract package
-    wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/1.0.4/aristotle-v1.0.4.tar.gz -O aristotle-v1.0.4.tar.gz
-    tar -xzf aristotle-v1.0.4.tar.gz -C $HOME
-    if [ -d "$HOME/aristotle-v1.0.4" ]; then
+    wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz -O aristotle-v1.0.6.tar.gz
+    tar -xzf aristotle-v1.0.6.tar.gz -C $HOME
+    if [ -d "$HOME/aristotle-v1.0.6" ]; then
         rm -rf "$HOME/aristotle"
-        mv "$HOME/aristotle-v1.0.4" "$HOME/aristotle"
+        mv "$HOME/aristotle-v1.0.6" "$HOME/aristotle"
     fi
     
     # Ensure target directories exist
@@ -260,14 +260,14 @@ function install_0gchain_app() {
         # Copy to standard location
         cp "$HOME/aristotle/bin/0gchaind" "$HOME/go/bin/0gchaind"
         sudo chmod +x "$HOME/go/bin/0gchaind"
-        echo "0gchaind v1.0.4 installed successfully to:"
+        echo "0gchaind v1.0.6 installed successfully to:"
         echo "- $HOME/go/bin/0gchaind"
     else
         echo "Error: 0gchaind binary not found in extracted package!"
     fi
     
     # Cleanup
-    rm -f aristotle-v1.0.4.tar.gz
+    rm -f aristotle-v1.0.6.tar.gz
     menu
 }
 

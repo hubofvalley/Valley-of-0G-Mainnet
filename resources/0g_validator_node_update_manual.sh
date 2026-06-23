@@ -50,7 +50,8 @@ BASE_URL="https://github.com/0gfoundation/0gchain-Aristotle/releases/download"
 echo "Select version to update:"
 echo "a) v1.0.2"
 echo "b) v1.0.3"
-echo "c) v1.0.4 (Latest version. Must Upgrade before January 28, 2026 at 00:00 UTC)"
+echo "c) v1.0.4"
+echo "d) v1.0.6 (Latest version. Must Upgrade before June 26, 2026 at 00:00 UTC)"
 
 read -p "Enter the letter corresponding to the version: " choice
 
@@ -70,6 +71,9 @@ case $choice in
         ;;
     c)
         update_version "v1.0.4" "$BASE_URL/1.0.4"
+        ;;
+    d)
+        update_version "v1.0.6" "$BASE_URL/v1.0.6"
         ;;
     *)
         echo "Invalid choice. Exiting."
