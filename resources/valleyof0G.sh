@@ -20,11 +20,23 @@ if [ -z "${OG_SERVICE_NAME:-}" ]; then
     export OG_SERVICE_NAME
 fi
 
-if [ -z "${OG_GETH_SERVICE_NAME:-}" ]; then
-    read -p "Enter Geth Service Name (default '0g-geth'): " INPUT_GETH
-    OG_GETH_SERVICE_NAME=${INPUT_GETH:-0g-geth}
-    echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\"" >> $HOME/.bash_profile
-    export OG_GETH_SERVICE_NAME
+# Detect execution client
+EXEC_CLIENT="${EXEC_CLIENT:-geth}"
+
+if [ "$EXEC_CLIENT" = "geth" ]; then
+    if [ -z "${OG_GETH_SERVICE_NAME:-}" ]; then
+        read -p "Enter Geth Service Name (default '0g-geth'): " INPUT_GETH
+        OG_GETH_SERVICE_NAME=${INPUT_GETH:-0g-geth}
+        echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\"" >> $HOME/.bash_profile
+        export OG_GETH_SERVICE_NAME
+    fi
+else
+    if [ -z "${OG_RETH_SERVICE_NAME:-}" ]; then
+        read -p "Enter Reth Service Name (default 'reth'): " INPUT_RETH
+        OG_RETH_SERVICE_NAME=${INPUT_RETH:-reth}
+        echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\"" >> $HOME/.bash_profile
+        export OG_RETH_SERVICE_NAME
+    fi
 fi
 
 LOGO="
@@ -56,9 +68,9 @@ ${YELLOW}| Category  | Requirements                   |
 | Storage   | 1+ TB NVMe SSD                 |
 | Bandwidth | 100 MBps for Download / Upload |${RESET}
 
-validator node current binaries version: ${CYAN}v1.0.4${RESET}
+validator node current binaries version: ${CYAN}v1.0.6${RESET}
 - consensus client service file name: ${CYAN}\${OG_SERVICE_NAME}.service${RESET}
-- 0g-geth service file name: ${CYAN}\${OG_GETH_SERVICE_NAME}.service${RESET}
+- $([ "${EXEC_CLIENT:-geth}" = "reth" ] && echo "reth service file name: \${CYAN}\${OG_RETH_SERVICE_NAME}.service" || echo "0g-geth service file name: \${CYAN}\${OG_GETH_SERVICE_NAME}.service")${RESET}
 current chain : ${CYAN}0gchain-16661 (Aristotle)${RESET}
 
 ------------------------------------------------------------------
@@ -165,11 +177,11 @@ function deploy_validator_node() {
     echo -e "\n${YELLOW}2. SYSTEM IMPACT:${RESET}"
     echo -e "${GREEN}New Services:${RESET}"
     echo -e "  • ${CYAN}${OG_SERVICE_NAME}.service${RESET} (Consensus Client)"
-    echo -e "  • ${CYAN}${OG_GETH_SERVICE_NAME}.service${RESET} (Execution Client)"
+    echo -e "  • ${CYAN}${OG_GETH_SERVICE_NAME:-0g-geth}.service${RESET} or ${CYAN}${OG_RETH_SERVICE_NAME:-reth}.service${RESET} (Execution Client)"
     
     echo -e "\n${RED}Existing Services to be Replaced:${RESET}"
     echo -e "  • ${CYAN}0gchaind${RESET}"
-    echo -e "  • ${CYAN}0g-geth${RESET}"
+    echo -e "  • ${CYAN}0g-geth${RESET} / ${CYAN}reth${RESET}"
     echo -e "  • ${CYAN}0ggeth${RESET}"
     
     echo -e "\n${GREEN}Port Configuration:${RESET}"
@@ -1146,20 +1158,32 @@ function ensure_private_key() {
 }
 
 function delete_validator_node() {
-    sudo systemctl stop ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
-    sudo systemctl disable ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
-    sudo rm -rf /etc/systemd/system/${OG_SERVICE_NAME}.service /etc/systemd/system/${OG_GETH_SERVICE_NAME}.service
-    sudo rm -r $HOME/aristotle
-    sudo rm -r $HOME/.0gchaind
-    sudo rm -r $HOME/aristotle-v1.0.4
+    local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+    fi
+    sudo systemctl stop ${OG_SERVICE_NAME} ${el_svc} 2>/dev/null || true
+    sudo systemctl disable ${OG_SERVICE_NAME} ${el_svc} 2>/dev/null || true
+    sudo rm -rf /etc/systemd/system/${OG_SERVICE_NAME}.service /etc/systemd/system/${el_svc}.service
+    sudo rm -rf $HOME/aristotle
+    sudo rm -rf $HOME/.0gchaind
+    sudo rm -rf $HOME/aristotle-v1.0.4
     sed -i "/OG_/d" $HOME/.bash_profile
+    sed -i "/EXEC_CLIENT/d" $HOME/.bash_profile
+    sed -i "/RETH_/d" $HOME/.bash_profile
     echo "Validator node deleted successfully."
     menu
 }
 
 function show_validator_logs() {
-    trap 'echo "Displaying Consensus Client and Execution Client (Geth) Logs:";' INT
-    sudo journalctl -u ${OG_SERVICE_NAME} -u ${OG_GETH_SERVICE_NAME} -fn 100 -o cat || true
+    local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
+    local client_name="Geth"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        client_name="Reth"
+    fi
+    trap "echo \"Displaying Consensus Client and Execution Client ($client_name) Logs:\";" INT
+    sudo journalctl -u ${OG_SERVICE_NAME} -u ${el_svc} -fn 100 -o cat || true
     trap - INT
     menu
 }
@@ -1172,25 +1196,54 @@ function show_consensus_client_logs() {
 }
 
 function show_geth_logs() {
-    trap 'echo "Displaying Execution Client (Geth) Logs:";' INT
-    sudo journalctl -u ${OG_GETH_SERVICE_NAME} -fn 100 --no-pager
+    local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
+    local client_name="Geth"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        client_name="Reth"
+    fi
+    trap "echo \"Displaying Execution Client ($client_name) Logs:\";" INT
+    sudo journalctl -u ${el_svc} -fn 100 --no-pager
     trap - INT
     menu
 }
 
 function show_node_status() {
-    port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+57' "$HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml") && curl "http://127.0.0.1:$port/status" | jq
-    geth_block_height=$(0g-geth --exec "eth.blockNumber" attach $HOME/.0gchaind/0g-home/geth-home/geth.ipc)
-    consensus_peers=$(curl -s "http://127.0.0.1:$port/net_info" | jq -r '.result.n_peers // "0"')
-    execution_peers_raw=$(0g-geth --exec "net.peerCount" attach $HOME/.0gchaind/0g-home/geth-home/geth.ipc)
-    execution_peers=$(printf "%d" "$execution_peers_raw" 2>/dev/null || echo "$execution_peers_raw")
-    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
-    node_height=$(curl -s "http://127.0.0.1:$port/status" | jq -r '.result.sync_info.latest_block_height')
+    local port
+    port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+57' "$HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml" 2>/dev/null || echo "26657")
+    local consensus_status
+    consensus_status=$(curl -s "http://127.0.0.1:$port/status" || true)
+    local node_height
+    node_height=$(echo "$consensus_status" | jq -r '.result.sync_info.latest_block_height // "0"' 2>/dev/null || echo "0")
+    local consensus_peers
+    consensus_peers=$(curl -s "http://127.0.0.1:$port/net_info" | jq -r '.result.n_peers // "0"' 2>/dev/null || echo "0")
+
+    local client_name="Geth"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        client_name="Reth"
+    fi
+
+    # Query Execution Client via JSON-RPC HTTP
+    local el_port="${OG_PORT:-26}545"
+    local el_rpc_url="http://127.0.0.1:$el_port"
+    local el_height_hex
+    el_height_hex=$(curl -s -X POST "$el_rpc_url" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' 2>/dev/null || echo "0x0")
+    local el_block_height
+    el_block_height=$(printf "%d" "$el_height_hex" 2>/dev/null || echo "0")
+
+    local el_peers_hex
+    el_peers_hex=$(curl -s -X POST "$el_rpc_url" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' | jq -r '.result' 2>/dev/null || echo "0x0")
+    local el_peers
+    el_peers=$(printf "%d" "$el_peers_hex" 2>/dev/null || echo "0")
+
+    local realtime_block_height
+    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n" 2>/dev/null || echo "0")
+
     echo "Consensus client block height: $node_height"
-    echo "Execution client (0g-geth) block height: $geth_block_height"
+    echo "Execution client ($client_name) block height: $el_block_height"
     echo "Consensus client peers connected: $consensus_peers"
-    echo "Execution client peers connected: $execution_peers"
-    block_difference=$(( realtime_block_height - node_height ))
+    echo "Execution client ($client_name) peers connected: $el_peers"
+    local block_difference=$(( realtime_block_height - node_height ))
     echo "Real-time Block Height: $realtime_block_height"
     echo -e "${YELLOW}Block Difference:${RESET} $block_difference"
 
@@ -1203,12 +1256,39 @@ function show_node_status() {
     menu
 }
 
+function migrate_geth_to_reth() {
+    clear
+    echo -e "${ORANGE}Migrating Geth to Reth Execution Client...${RESET}"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        echo -e "${YELLOW}Your execution client is already set to Reth in .bash_profile.${RESET}"
+        read -p "Do you want to run the migration script anyway? (y/n): " force_mig
+        if [[ "${force_mig,,}" != "y" ]]; then
+            menu
+            return
+        fi
+    fi
+    
+    local script_dir
+    script_dir="$(dirname "${BASH_SOURCE[0]}")"
+    if [ -f "$script_dir/0g_geth_to_reth_migrate.sh" ]; then
+        bash "$script_dir/0g_geth_to_reth_migrate.sh"
+    else
+        bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_geth_to_reth_migrate.sh)
+    fi
+    menu
+}
+
 function schedule_validator_node() {
     echo -e "${YELLOW}This feature will:${RESET}"
     echo -e "${GREEN}- Run:${RESET} sudo apt-get update"
     echo -e "${GREEN}- Install dependency:${RESET} at"
     echo -e "${GREEN}- Enable and start:${RESET} atd (scheduler service)"
-    echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}${OG_SERVICE_NAME}.service${RESET} + ${CYAN}${OG_GETH_SERVICE_NAME}.service${RESET} via ${ORANGE}at${RESET}"
+    
+    local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+    fi
+    echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}${OG_SERVICE_NAME}.service${RESET} + ${CYAN}${el_svc}.service${RESET} via ${ORANGE}at${RESET}"
     echo -e "${GREEN}- List or remove:${RESET} scheduled jobs from the at queue"
     echo -e "\n${YELLOW}Press Enter to continue...${RESET}"
     read -r
@@ -1217,13 +1297,21 @@ function schedule_validator_node() {
 }
 
 function stop_validator_node() {
-    sudo systemctl stop ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
+    local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+    fi
+    sudo systemctl stop ${OG_SERVICE_NAME} ${el_svc}
     menu
 }
 
 function restart_validator_node() {
+    local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+    fi
     sudo systemctl daemon-reload
-    sudo systemctl restart ${OG_SERVICE_NAME} ${OG_GETH_SERVICE_NAME}
+    sudo systemctl restart ${OG_SERVICE_NAME} ${el_svc}
     menu
 }
 
@@ -1659,13 +1747,14 @@ function show_guidelines() {
     echo "   c. Apply Validator Node Snapshot: Speed up sync using official snapshot."
     echo "   d. Add Peers: Add peers (manual or Grand Valley preset)."
     echo "   e. Show Node Status: Display consensus and app status."
-    echo "   f. Show Validator Node Logs: Tail both consensus and geth logs."
+    echo "   f. Show Validator Node Logs: Tail both consensus and execution client logs."
     echo "   g. Show Consensus Client Logs: Tail only consensus logs."
-    echo "   h. Show Geth Logs: Tail only 0g-geth logs."
+    echo "   h. Show Execution Client Logs: Tail only Geth or Reth logs."
     echo "   i. Query Balance: Check EVM address balance via RPC."
     echo "   j. Create Validator: Submit create-validator tx (requires synced node and funds)."
     echo "   k. Delegate to Validator: Delegate OG to a validator."
     echo "   l. Undelegate from Validator: Undelegate previously delegated OG."
+    echo "   m. Migrate Geth to Reth: Migrates your database from Geth to Reth."
 
     echo -e "${GREEN}Storage Node Options:${RESET}"
     echo "   a. Deploy Storage Node: Sets up a new storage node."
@@ -1722,13 +1811,14 @@ function menu() {
     echo "    c. Apply Validator Node Snapshot"
     echo "    d. Add Peers"
     echo "    e. Show Node Status"
-    echo "    f. Show Validator Node Logs (Consensus + Geth)"
+    echo "    f. Show Validator Node Logs (Consensus + Execution Client)"
     echo "    g. Show Consensus Client Logs"
-    echo "    h. Show Geth Logs"
+    echo "    h. Show Execution Client Logs (Geth or Reth)"
     echo "    i. Query Balance"
     echo "    j. Create Validator"
     echo "    k. Delegate to Validator"
     echo "    l. Undelegate from Validator"
+    echo "    m. Migrate Geth to Reth (Experimental)"
     echo -e "${GREEN}2. Storage Node${RESET}"
     echo "    a. Deploy Storage Node"
     echo "    b. Update Storage Node"
@@ -1798,6 +1888,7 @@ function menu() {
                 j) create_validator ;;
                 k) delegate_to_validator ;;
                 l) undelegate_from_validator ;;
+                m) migrate_geth_to_reth ;;
                 *) echo "Invalid sub-option. Please try again." ;;
             esac
             ;;
