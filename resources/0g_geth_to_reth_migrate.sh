@@ -38,8 +38,9 @@ fi
 OG_SERVICE_NAME="${OG_SERVICE_NAME:-0gchaind}"
 OG_GETH_SERVICE_NAME="${OG_GETH_SERVICE_NAME:-0g-geth}"
 
-read -p "Enter Reth Service Name (default 'reth'): " OG_RETH_SERVICE_NAME
-OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-reth}
+read -p "Enter Reth Service Name (default '0g-reth'): " OG_RETH_SERVICE_NAME
+OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-0g-reth}
+
 
 echo -e "\n${CYAN}Select Reth Pruning Mode:${RESET}"
 echo -e "  ${GREEN}1) Full Node${RESET}  - Prunes receipts and historical states (keeps last 10,064 blocks; recommended for validator, saves space)"

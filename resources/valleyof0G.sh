@@ -32,8 +32,8 @@ if [ "$EXEC_CLIENT" = "geth" ]; then
     fi
 else
     if [ -z "${OG_RETH_SERVICE_NAME:-}" ]; then
-        read -p "Enter Reth Service Name (default 'reth'): " INPUT_RETH
-        OG_RETH_SERVICE_NAME=${INPUT_RETH:-reth}
+        read -p "Enter Reth Service Name (default '0g-reth'): " INPUT_RETH
+        OG_RETH_SERVICE_NAME=${INPUT_RETH:-0g-reth}
         echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\"" >> $HOME/.bash_profile
         export OG_RETH_SERVICE_NAME
     fi
@@ -177,11 +177,11 @@ function deploy_validator_node() {
     echo -e "\n${YELLOW}2. SYSTEM IMPACT:${RESET}"
     echo -e "${GREEN}New Services:${RESET}"
     echo -e "  • ${CYAN}${OG_SERVICE_NAME}.service${RESET} (Consensus Client)"
-    echo -e "  • ${CYAN}${OG_GETH_SERVICE_NAME:-0g-geth}.service${RESET} or ${CYAN}${OG_RETH_SERVICE_NAME:-reth}.service${RESET} (Execution Client)"
+    echo -e "  • ${CYAN}${OG_GETH_SERVICE_NAME:-0g-geth}.service${RESET} or ${CYAN}${OG_RETH_SERVICE_NAME:-0g-reth}.service${RESET} (Execution Client)"
     
     echo -e "\n${RED}Existing Services to be Replaced:${RESET}"
     echo -e "  • ${CYAN}0gchaind${RESET}"
-    echo -e "  • ${CYAN}0g-geth${RESET} / ${CYAN}reth${RESET}"
+    echo -e "  • ${CYAN}0g-geth${RESET} / ${CYAN}0g-reth${RESET} / ${CYAN}reth${RESET}"
     echo -e "  • ${CYAN}0ggeth${RESET}"
     
     echo -e "\n${GREEN}Port Configuration:${RESET}"
@@ -1160,7 +1160,7 @@ function ensure_private_key() {
 function delete_validator_node() {
     local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
     if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
-        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        el_svc="${OG_RETH_SERVICE_NAME:-0g-reth}"
     fi
     sudo systemctl stop ${OG_SERVICE_NAME} ${el_svc} 2>/dev/null || true
     sudo systemctl disable ${OG_SERVICE_NAME} ${el_svc} 2>/dev/null || true
@@ -1179,7 +1179,7 @@ function show_validator_logs() {
     local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
     local client_name="Geth"
     if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
-        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        el_svc="${OG_RETH_SERVICE_NAME:-0g-reth}"
         client_name="Reth"
     fi
     trap "echo \"Displaying Consensus Client and Execution Client ($client_name) Logs:\";" INT
@@ -1199,7 +1199,7 @@ function show_geth_logs() {
     local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
     local client_name="Geth"
     if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
-        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        el_svc="${OG_RETH_SERVICE_NAME:-0g-reth}"
         client_name="Reth"
     fi
     trap "echo \"Displaying Execution Client ($client_name) Logs:\";" INT
@@ -1286,7 +1286,7 @@ function schedule_validator_node() {
     
     local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
     if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
-        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        el_svc="${OG_RETH_SERVICE_NAME:-0g-reth}"
     fi
     echo -e "${GREEN}- Schedule:${RESET} stop/disable or restart/enable for ${CYAN}${OG_SERVICE_NAME}.service${RESET} + ${CYAN}${el_svc}.service${RESET} via ${ORANGE}at${RESET}"
     echo -e "${GREEN}- List or remove:${RESET} scheduled jobs from the at queue"
@@ -1299,7 +1299,7 @@ function schedule_validator_node() {
 function stop_validator_node() {
     local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
     if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
-        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        el_svc="${OG_RETH_SERVICE_NAME:-0g-reth}"
     fi
     sudo systemctl stop ${OG_SERVICE_NAME} ${el_svc}
     menu
@@ -1308,7 +1308,7 @@ function stop_validator_node() {
 function restart_validator_node() {
     local el_svc="${OG_GETH_SERVICE_NAME:-0g-geth}"
     if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
-        el_svc="${OG_RETH_SERVICE_NAME:-reth}"
+        el_svc="${OG_RETH_SERVICE_NAME:-0g-reth}"
     fi
     sudo systemctl daemon-reload
     sudo systemctl restart ${OG_SERVICE_NAME} ${el_svc}

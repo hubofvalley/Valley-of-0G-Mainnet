@@ -75,8 +75,8 @@ if [ "$EXEC_CLIENT" = "geth" ]; then
     fi
     echo "Using Service Names: ${OG_SERVICE_NAME} and ${OG_GETH_SERVICE_NAME}"
 else
-    read -p "Enter Reth Service Name (default 'reth'): " OG_RETH_SERVICE_NAME
-    OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-reth}
+    read -p "Enter Reth Service Name (default '0g-reth'): " OG_RETH_SERVICE_NAME
+    OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-0g-reth}
 
     echo -e "\n${CYAN}Select Reth Pruning Mode:${RESET}"
     echo -e "  ${GREEN}1) Full Node${RESET}  - Prunes receipts and historical states (keeps last 10,064 blocks; recommended for validator, saves space)"
@@ -122,10 +122,10 @@ echo -e "\n?? Cleaning up any existing 0G node installation..."
 
 # Stop and disable services (uses both hardcoded and custom names for compatibility)
 sudo systemctl stop 0gchaind ${OG_SERVICE_NAME} 2>/dev/null || true
-sudo systemctl stop 0g-geth 0ggeth reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
+sudo systemctl stop 0g-geth 0ggeth reth 0g-reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
 sudo systemctl disable 0gchaind ${OG_SERVICE_NAME} 2>/dev/null || true
-sudo systemctl disable 0g-geth 0ggeth reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
-sudo rm -f /etc/systemd/system/0gchaind.service /etc/systemd/system/0g-geth.service /etc/systemd/system/0ggeth.service /etc/systemd/system/reth.service
+sudo systemctl disable 0g-geth 0ggeth reth 0g-reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
+sudo rm -f /etc/systemd/system/0gchaind.service /etc/systemd/system/0g-geth.service /etc/systemd/system/0ggeth.service /etc/systemd/system/reth.service /etc/systemd/system/0g-reth.service
 sudo rm -f /etc/systemd/system/${OG_SERVICE_NAME}.service /etc/systemd/system/${OG_GETH_SERVICE_NAME:-_skip_}.service /etc/systemd/system/${OG_RETH_SERVICE_NAME:-_skip_}.service 2>/dev/null || true
 sudo rm -f $HOME/go/bin/0gchaind $HOME/go/bin/0g-geth $HOME/go/bin/0ggeth $HOME/go/bin/reth
 rm -rf $HOME/.0gchaind $HOME/aristotle $HOME/aristotle-v1.0.4 $HOME/aristotle-v1.0.4.tar.gz $HOME/aristotle-v1.0.6 $HOME/aristotle-v1.0.6.tar.gz
