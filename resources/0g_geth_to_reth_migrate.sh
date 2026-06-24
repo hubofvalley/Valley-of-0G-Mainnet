@@ -58,24 +58,9 @@ echo -e "  Geth Svc (old): ${OG_GETH_SERVICE_NAME}"
 echo -e "  Reth Svc (new): ${OG_RETH_SERVICE_NAME}"
 echo ""
 
-# ==== STEP 1: Capture last block height from live Geth ====
-echo -e "${CYAN}[Step 1/8] Capturing last block height from Geth...${RESET}"
-CHAIN_HEAD=$(curl -s -X POST http://localhost:${OG_PORT}545 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-  | jq -r '.result' | xargs printf "%d\n" 2>/dev/null || echo "0")
 
-if [ "$CHAIN_HEAD" = "0" ] || [ -z "$CHAIN_HEAD" ]; then
-    echo -e "${YELLOW}Warning: Could not fetch block height from Geth RPC (port ${OG_PORT}545).${RESET}"
-    read -p "Enter the last known block height manually: " CHAIN_HEAD
-    while ! [[ "$CHAIN_HEAD" =~ ^[0-9]+$ ]]; do
-        read -p "Please enter a valid block number: " CHAIN_HEAD
-    done
-fi
-echo -e "${GREEN}Last block height: $CHAIN_HEAD${RESET}"
-
-# ==== STEP 2: Stop services & backup ====
-echo -e "${CYAN}[Step 2/8] Stopping services and creating backup...${RESET}"
+# ==== STEP 1: Stop services & backup ====
+echo -e "${CYAN}[Step 1/7] Stopping services and creating backup...${RESET}"
 sudo systemctl stop ${OG_SERVICE_NAME} 2>/dev/null || true
 sudo systemctl stop ${OG_GETH_SERVICE_NAME} 2>/dev/null || true
 
@@ -92,8 +77,8 @@ else
     echo -e "${YELLOW}Skipping consensus data backup.${RESET}"
 fi
 
-# ==== STEP 3: Download Aristotle v1.0.6 & copy binaries ====
-echo -e "${CYAN}[Step 3/8] Downloading Aristotle v1.0.6 and preparing Reth binary...${RESET}"
+# ==== STEP 2: Download Aristotle v1.0.6 & copy binaries ====
+echo -e "${CYAN}[Step 2/7] Downloading Aristotle v1.0.6 and preparing Reth binary...${RESET}"
 cd $HOME
 if [ ! -f "$HOME/aristotle/bin/reth" ] && [ ! -f "$HOME/go/bin/0g-reth" ]; then
     wget -q -O aristotle.tar.gz https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz
@@ -129,10 +114,10 @@ cp -f $HOME/aristotle-used/jwt.hex $HOME/.0gchaind/0g-home/ 2>/dev/null || true
 cp -f $HOME/aristotle-used/kzg-trusted-setup.json $HOME/.0gchaind/0g-home/ 2>/dev/null || true
 echo -e "${GREEN}Reth binary and config files ready.${RESET}"
 
-# ==== STEP 4: Export Geth data to RLP ====
-echo -e "${CYAN}[Step 4/8] Exporting Geth chain data to RLP...${RESET}"
+# ==== STEP 3: Export Geth data to RLP ====
+echo -e "${CYAN}[Step 3/7] Exporting Geth chain data to RLP...${RESET}"
 echo -e "${YELLOW}This may take a long time depending on chain height and disk speed.${RESET}"
-echo -e "${YELLOW}Chain will be exported from block 1 to block $CHAIN_HEAD${RESET}"
+echo -e "${YELLOW}Chain will be exported from Geth database...${RESET}"
 
 # Check if geth binary exists
 GETH_BIN=""
@@ -155,13 +140,12 @@ fi
 
 $GETH_BIN export \
   --datadir $HOME/.0gchaind/0g-home/geth-home \
-  $HOME/.0gchaind/0g-home/chain-export.rlp \
-  1 $CHAIN_HEAD
+  $HOME/.0gchaind/0g-home/chain-export.rlp
 
 echo -e "${GREEN}Geth data exported successfully.${RESET}"
 
-# ==== STEP 5: Init Reth and trim RLP ====
-echo -e "${CYAN}[Step 5/8] Initializing Reth and trimming genesis block from RLP...${RESET}"
+# ==== STEP 4: Init Reth and trim RLP ====
+echo -e "${CYAN}[Step 4/7] Initializing Reth and trimming genesis block from RLP...${RESET}"
 
 # Init reth
 GENESIS_JSON="$HOME/aristotle-used/geth-genesis.json"
@@ -263,8 +247,8 @@ PYEOF
 python3 $HOME/.0gchaind/0g-home/trim_export.py $HOME/.0gchaind/0g-home/chain-export.rlp 1
 echo -e "${GREEN}Genesis block trimmed from RLP export.${RESET}"
 
-# ==== STEP 6: Import RLP into Reth ====
-echo -e "${CYAN}[Step 6/8] Importing chain data into Reth...${RESET}"
+# ==== STEP 5: Import RLP into Reth ====
+echo -e "${CYAN}[Step 5/7] Importing chain data into Reth...${RESET}"
 echo -e "${YELLOW}This is the longest step. Importing blocks into Reth database...${RESET}"
 echo -e "${RED}DO NOT interrupt this process!${RESET}"
 
@@ -292,8 +276,8 @@ fi
 
 echo -e "${GREEN}Reth import completed successfully!${RESET}"
 
-# ==== STEP 7: Update config & create service files ====
-echo -e "${CYAN}[Step 7/8] Updating configuration and creating service files...${RESET}"
+# ==== STEP 6: Update config & create service files ====
+echo -e "${CYAN}[Step 6/7] Updating configuration and creating service files...${RESET}"
 
 EXTERNAL_IP=$(curl -4 -s ifconfig.me)
 
@@ -409,8 +393,8 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# ==== STEP 8: Start services ====
-echo -e "${CYAN}[Step 8/8] Starting Reth and consensus services...${RESET}"
+# ==== STEP 7: Start services ====
+echo -e "${CYAN}[Step 7/7] Starting Reth and consensus services...${RESET}"
 sudo systemctl daemon-reload
 sudo systemctl enable ${OG_RETH_SERVICE_NAME} ${OG_SERVICE_NAME}
 
