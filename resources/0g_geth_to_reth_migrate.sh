@@ -337,7 +337,7 @@ User=$USER
 Environment=CHAIN_SPEC=mainnet
 WorkingDirectory=$HOME/.0gchaind
 ExecStart=$HOME/go/bin/0gchaind start \\
-  --rpc.laddr tcp://0.0.0.0:${OG_PORT}657 \\
+  --rpc.laddr tcp://127.0.0.1:${OG_PORT}657 \\
   --chaincfg.chain-spec mainnet \\
   --chaincfg.restaking.enabled \\
   --chaincfg.restaking.symbiotic-rpc-dial-url ${ETH_RPC_URL} \\
@@ -371,7 +371,7 @@ User=$USER
 Environment=CHAIN_SPEC=mainnet
 WorkingDirectory=$HOME/.0gchaind
 ExecStart=$HOME/go/bin/0gchaind start \\
-  --rpc.laddr tcp://0.0.0.0:${OG_PORT}657 \\
+  --rpc.laddr tcp://127.0.0.1:${OG_PORT}657 \\
   --chaincfg.chain-spec mainnet \\
   --home $HOME/.0gchaind/0g-home/0gchaind-home \\
   --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/0g-home/kzg-trusted-setup.json \\
