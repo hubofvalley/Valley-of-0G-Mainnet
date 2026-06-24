@@ -109,8 +109,9 @@ cp $HOME/aristotle-used/bin/0gchaind $HOME/go/bin/0gchaind
 # Reth data dir
 mkdir -p $HOME/.0gchaind/0g-home/reth-home
 
-# Copy JWT and KZG files
+# Copy JWT, Genesis, and KZG files
 cp -f $HOME/aristotle-used/jwt.hex $HOME/.0gchaind/jwt.hex 2>/dev/null || true
+cp -f $HOME/aristotle-used/geth-genesis.json $HOME/.0gchaind/geth-genesis.json 2>/dev/null || true
 cp -f $HOME/aristotle-used/kzg-trusted-setup.json $HOME/.0gchaind/0g-home/ 2>/dev/null || true
 echo -e "${GREEN}Reth binary and config files ready.${RESET}"
 
@@ -148,13 +149,10 @@ echo -e "${GREEN}Geth data exported successfully.${RESET}"
 echo -e "${CYAN}[Step 4/7] Initializing Reth and trimming genesis block from RLP...${RESET}"
 
 # Init reth
-GENESIS_JSON="$HOME/aristotle-used/geth-genesis.json"
-if [ ! -f "$GENESIS_JSON" ]; then
-    GENESIS_JSON="$HOME/.0gchaind/geth-genesis.json"
-fi
+GENESIS_JSON="$HOME/.0gchaind/geth-genesis.json"
 if [ ! -f "$GENESIS_JSON" ]; then
     echo -e "${RED}Error: Genesis file not found at $GENESIS_JSON${RESET}"
-    echo -e "${YELLOW}Ensure aristotle package is properly extracted.${RESET}"
+    echo -e "${YELLOW}Ensure geth-genesis.json is in your .0gchaind directory.${RESET}"
     exit 1
 fi
 $HOME/go/bin/0g-reth init \
