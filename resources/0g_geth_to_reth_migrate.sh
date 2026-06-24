@@ -79,11 +79,18 @@ echo -e "${CYAN}[Step 2/8] Stopping services and creating backup...${RESET}"
 sudo systemctl stop ${OG_SERVICE_NAME} 2>/dev/null || true
 sudo systemctl stop ${OG_GETH_SERVICE_NAME} 2>/dev/null || true
 
-# Backup consensus data
-BACKUP_DIR="$HOME/.0gchaind/backup-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $BACKUP_DIR
-cp -r $HOME/.0gchaind/0g-home/0gchaind-home $BACKUP_DIR/0gchaind-home
-echo -e "${GREEN}Consensus data backed up to: $BACKUP_DIR${RESET}"
+# Backup consensus data (optional)
+BACKUP_DIR="N/A (Skipped)"
+read -p "Do you want to backup consensus data before migrating? (yes/no) [default yes]: " DO_BACKUP
+DO_BACKUP=${DO_BACKUP:-yes}
+if [[ "${DO_BACKUP,,}" == "y" || "${DO_BACKUP,,}" == "yes" ]]; then
+    BACKUP_DIR="$HOME/.0gchaind/backup-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    cp -r $HOME/.0gchaind/0g-home/0gchaind-home "$BACKUP_DIR/0gchaind-home"
+    echo -e "${GREEN}Consensus data backed up to: $BACKUP_DIR${RESET}"
+else
+    echo -e "${YELLOW}Skipping consensus data backup.${RESET}"
+fi
 
 # ==== STEP 3: Download Aristotle v1.0.6 & copy binaries ====
 echo -e "${CYAN}[Step 3/8] Downloading Aristotle v1.0.6 and preparing Reth binary...${RESET}"
