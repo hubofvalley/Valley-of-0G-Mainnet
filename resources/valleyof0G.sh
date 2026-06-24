@@ -1213,6 +1213,9 @@ function show_node_status() {
     port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+57' "$HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml" 2>/dev/null || echo "26657")
     local consensus_status
     consensus_status=$(curl -s "http://127.0.0.1:$port/status" || true)
+    if [ -n "$consensus_status" ]; then
+        echo "$consensus_status" | jq 2>/dev/null || true
+    fi
     local node_height
     node_height=$(echo "$consensus_status" | jq -r '.result.sync_info.latest_block_height // "0"' 2>/dev/null || echo "0")
     local consensus_peers
