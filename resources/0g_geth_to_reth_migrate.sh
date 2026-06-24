@@ -104,7 +104,7 @@ echo -e "${GREEN}Consensus data backed up to: $BACKUP_DIR${RESET}"
 # ==== STEP 3: Download Aristotle v1.0.6 & copy binaries ====
 echo -e "${CYAN}[Step 3/8] Downloading Aristotle v1.0.6 and preparing Reth binary...${RESET}"
 cd $HOME
-if [ ! -f "$HOME/aristotle/bin/reth" ] && [ ! -f "$HOME/go/bin/reth" ]; then
+if [ ! -f "$HOME/aristotle/bin/reth" ] && [ ! -f "$HOME/go/bin/0g-reth" ]; then
     wget -q -O aristotle.tar.gz https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz
     rm -rf aristotle-used
     tar -xzvf aristotle.tar.gz -C $HOME
@@ -127,7 +127,7 @@ fi
 
 # Copy binaries
 sudo chmod +x $HOME/aristotle-used/bin/reth $HOME/aristotle-used/bin/0gchaind 2>/dev/null || true
-cp $HOME/aristotle-used/bin/reth $HOME/go/bin/reth
+cp $HOME/aristotle-used/bin/reth $HOME/go/bin/0g-reth
 cp $HOME/aristotle-used/bin/0gchaind $HOME/go/bin/0gchaind
 
 # Reth data dir
@@ -177,7 +177,12 @@ GENESIS_JSON="$HOME/aristotle-used/geth-genesis.json"
 if [ ! -f "$GENESIS_JSON" ]; then
     GENESIS_JSON="$HOME/.0gchaind/geth-genesis.json"
 fi
-reth init \
+if [ ! -f "$GENESIS_JSON" ]; then
+    echo -e "${RED}Error: Genesis file not found at $GENESIS_JSON${RESET}"
+    echo -e "${YELLOW}Ensure aristotle package is properly extracted.${RESET}"
+    exit 1
+fi
+$HOME/go/bin/0g-reth init \
   --chain $GENESIS_JSON \
   --datadir $HOME/.0gchaind/0g-home/reth-home
 
@@ -275,16 +280,22 @@ echo -e "${RED}DO NOT interrupt this process!${RESET}"
 TRIMMED_RLP="$HOME/.0gchaind/0g-home/chain-export-from-1.rlp"
 IMPORT_LOG="$HOME/.0gchaind/0g-home/reth-import.log"
 
-$HOME/go/bin/reth import \
+set +e
+$HOME/go/bin/0g-reth import \
   --chain $GENESIS_JSON \
   --datadir $HOME/.0gchaind/0g-home/reth-home \
   $TRIMMED_RLP 2>&1 | tee $IMPORT_LOG
-
-IMPORT_EXIT=$?
+IMPORT_EXIT=${PIPESTATUS[0]}
+set -e
 if [ $IMPORT_EXIT -ne 0 ]; then
     echo -e "${RED}Reth import failed! Check log: $IMPORT_LOG${RESET}"
-    echo -e "${YELLOW}You can retry the import manually:${RESET}"
-    echo "  reth import --chain $GENESIS_JSON --datadir \$HOME/.0gchaind/0g-home/reth-home $TRIMMED_RLP"
+    echo -e "${YELLOW}If error is 'block number X does not match parent block number Y':${RESET}"
+    echo -e "  1. Re-trim from Y+1:"
+    echo -e "     python3 \$HOME/.0gchaind/0g-home/trim_export.py \$HOME/.0gchaind/0g-home/chain-export.rlp <Y+1>"
+    echo -e "  2. Re-import the trimmed file:"
+    echo -e "     \$HOME/go/bin/0g-reth import --chain $GENESIS_JSON --datadir \$HOME/.0gchaind/0g-home/reth-home \$HOME/.0gchaind/0g-home/chain-export-from-<Y+1>.rlp"
+    echo -e "${YELLOW}Otherwise retry full import:${RESET}"
+    echo -e "  \$HOME/go/bin/0g-reth import --chain $GENESIS_JSON --datadir \$HOME/.0gchaind/0g-home/reth-home $TRIMMED_RLP"
     exit 1
 fi
 
@@ -313,7 +324,7 @@ After=network-online.target
 User=$USER
 Type=simple
 WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/reth node \\
+ExecStart=$HOME/go/bin/0g-reth node \\
   --chain $GENESIS_JSON \\
   --http \\
   --http.addr 0.0.0.0 \\

@@ -127,7 +127,7 @@ sudo systemctl disable 0gchaind ${OG_SERVICE_NAME} 2>/dev/null || true
 sudo systemctl disable 0g-geth 0ggeth reth 0g-reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
 sudo rm -f /etc/systemd/system/0gchaind.service /etc/systemd/system/0g-geth.service /etc/systemd/system/0ggeth.service /etc/systemd/system/reth.service /etc/systemd/system/0g-reth.service
 sudo rm -f /etc/systemd/system/${OG_SERVICE_NAME}.service /etc/systemd/system/${OG_GETH_SERVICE_NAME:-_skip_}.service /etc/systemd/system/${OG_RETH_SERVICE_NAME:-_skip_}.service 2>/dev/null || true
-sudo rm -f $HOME/go/bin/0gchaind $HOME/go/bin/0g-geth $HOME/go/bin/0ggeth $HOME/go/bin/reth
+sudo rm -f $HOME/go/bin/0gchaind $HOME/go/bin/0g-geth $HOME/go/bin/0ggeth $HOME/go/bin/reth $HOME/go/bin/0g-reth
 rm -rf $HOME/.0gchaind $HOME/aristotle $HOME/aristotle-v1.0.4 $HOME/aristotle-v1.0.4.tar.gz $HOME/aristotle-v1.0.6 $HOME/aristotle-v1.0.6.tar.gz
 
 echo "? Cleanup complete."
@@ -172,7 +172,7 @@ sudo chmod +x $HOME/aristotle/bin/geth $HOME/aristotle/bin/reth $HOME/aristotle/
 if [ "$EXEC_CLIENT" = "geth" ]; then
     cp $HOME/aristotle/bin/geth $HOME/go/bin/0g-geth
 else
-    cp $HOME/aristotle/bin/reth $HOME/go/bin/reth
+    cp $HOME/aristotle/bin/reth $HOME/go/bin/0g-reth
 fi
 cp $HOME/aristotle/bin/0gchaind $HOME/go/bin/0gchaind
 
@@ -182,7 +182,7 @@ cp -r $HOME/aristotle/* $HOME/.0gchaind/
 if [ "$EXEC_CLIENT" = "geth" ]; then
     0g-geth init --datadir $HOME/.0gchaind/0g-home/geth-home $HOME/.0gchaind/geth-genesis.json
 else
-    reth init --chain $HOME/.0gchaind/geth-genesis.json --datadir $HOME/.0gchaind/0g-home/reth-home
+    0g-reth init --chain $HOME/.0gchaind/geth-genesis.json --datadir $HOME/.0gchaind/0g-home/reth-home
 fi
 0gchaind init "$OG_MONIKER" --home $HOME/.0gchaind/tmp --chaincfg.chain-spec mainnet
 
@@ -360,7 +360,7 @@ After=network-online.target
 User=$USER
 Type=simple
 WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/reth node \\
+ExecStart=$HOME/go/bin/0g-reth node \\
   --chain $HOME/.0gchaind/geth-genesis.json \\
   --http \\
   --http.addr 0.0.0.0 \\

@@ -6,6 +6,7 @@ source $HOME/.bash_profile 2>/dev/null
 # Set defaults for service names
 OG_SERVICE_NAME=${OG_SERVICE_NAME:-0gchaind}
 OG_GETH_SERVICE_NAME=${OG_GETH_SERVICE_NAME:-0g-geth}
+OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-0g-reth}
 
 function update_version {
     VERSION=$1
@@ -13,15 +14,22 @@ function update_version {
     BACKUP_DIR="$HOME/backups"
  
     echo "Updating to version $VERSION..."
+
+    # Detect execution client and corresponding service
+    local el_svc="${OG_GETH_SERVICE_NAME}"
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        el_svc="${OG_RETH_SERVICE_NAME}"
+    fi
     
     # Stop services
-    sudo systemctl stop ${OG_GETH_SERVICE_NAME} || { echo "Failed to stop ${OG_GETH_SERVICE_NAME}"; exit 1; }
+    sudo systemctl stop ${el_svc} || { echo "Failed to stop ${el_svc}"; exit 1; }
     sudo systemctl stop ${OG_SERVICE_NAME} || { echo "Failed to stop ${OG_SERVICE_NAME}"; exit 1; }
  
     # Backup old binaries
     TIMESTAMP=$(date +%Y%m%d%H%M%S)
     mkdir -p $BACKUP_DIR
     [ -f $HOME/go/bin/0g-geth ] && cp $HOME/go/bin/0g-geth $BACKUP_DIR/0g-geth.$TIMESTAMP
+    [ -f $HOME/go/bin/0g-reth ] && cp $HOME/go/bin/0g-reth $BACKUP_DIR/0g-reth.$TIMESTAMP
     [ -f $HOME/go/bin/0gchaind ] && cp $HOME/go/bin/0gchaind $BACKUP_DIR/0gchaind.$TIMESTAMP
  
     # Download and install new version
@@ -30,15 +38,20 @@ function update_version {
     tar -xzf aristotle-${VERSION}.tar.gz || { echo "Extraction failed"; exit 1; }
     rm aristotle-${VERSION}.tar.gz
 
-    cp aristotle-${VERSION}/bin/geth $HOME/go/bin/0g-geth
+    # Copy correct EL binary based on execution client
+    if [ "${EXEC_CLIENT:-geth}" = "reth" ]; then
+        cp aristotle-${VERSION}/bin/reth $HOME/go/bin/0g-reth
+        sudo chmod +x $HOME/go/bin/0g-reth
+    else
+        cp aristotle-${VERSION}/bin/geth $HOME/go/bin/0g-geth
+        sudo chmod +x $HOME/go/bin/0g-geth
+    fi
     cp aristotle-${VERSION}/bin/0gchaind $HOME/go/bin/0gchaind
-    sudo chmod +x $HOME/go/bin/0g-geth
     sudo chmod +x $HOME/go/bin/0gchaind
-
 
     # Restart services
     sudo systemctl daemon-reload
-    sudo systemctl start ${OG_GETH_SERVICE_NAME} || { echo "Failed to start ${OG_GETH_SERVICE_NAME}"; exit 1; }
+    sudo systemctl start ${el_svc} || { echo "Failed to start ${el_svc}"; exit 1; }
     sudo systemctl start ${OG_SERVICE_NAME} || { echo "Failed to start ${OG_SERVICE_NAME}"; exit 1; }
 
     echo "Update to 0gchain-Aristotle $VERSION completed!"
