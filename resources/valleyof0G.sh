@@ -1281,6 +1281,29 @@ function migrate_geth_to_reth() {
     menu
 }
 
+function rollback_align_height() {
+    clear
+    echo -e "${ORANGE}Rollback & Align CL/EL Height...${RESET}"
+    if [ "${EXEC_CLIENT:-geth}" != "reth" ]; then
+        echo -e "${YELLOW}Warning: This feature is designed for Reth execution client.${RESET}"
+        read -p "Continue anyway? (y/n): " force_rb
+        if [[ "${force_rb,,}" != "y" ]]; then
+            menu
+            return
+        fi
+    fi
+
+    local script_dir
+    script_dir="$(dirname "${BASH_SOURCE[0]}")"
+    if [ -f "$script_dir/0g_rollback_align.sh" ]; then
+        bash "$script_dir/0g_rollback_align.sh"
+    else
+        bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_rollback_align.sh)
+    fi
+    menu
+}
+
+
 function schedule_validator_node() {
     echo -e "${YELLOW}This feature will:${RESET}"
     echo -e "${GREEN}- Run:${RESET} sudo apt-get update"
@@ -1822,6 +1845,7 @@ function menu() {
     echo "    k. Delegate to Validator"
     echo "    l. Undelegate from Validator"
     echo "    m. Migrate Geth to Reth (Experimental)"
+    echo "    n. Rollback & Align CL/EL Height (Recovery)"
     echo -e "${GREEN}2. Storage Node${RESET}"
     echo "    a. Deploy Storage Node"
     echo "    b. Update Storage Node"
@@ -1865,7 +1889,7 @@ function menu() {
     read -p "Choose an option (e.g., 1a or 1 then a): " OPTION
 
     # Accept combined selections up to 9 and sub-letters up to 'l' (for Node Management extended sub-options)
-    if [[ $OPTION =~ ^[1-9][a-m]$ ]]; then
+    if [[ $OPTION =~ ^[1-9][a-n]$ ]]; then
         MAIN_OPTION=${OPTION:0:1}
         SUB_OPTION=${OPTION:1:1}
     else
@@ -1892,6 +1916,7 @@ function menu() {
                 k) delegate_to_validator ;;
                 l) undelegate_from_validator ;;
                 m) migrate_geth_to_reth ;;
+                n) rollback_align_height ;;
                 *) echo "Invalid sub-option. Please try again." ;;
             esac
             ;;
