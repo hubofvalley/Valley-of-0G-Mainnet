@@ -78,21 +78,6 @@ else
     read -p "Enter Reth Service Name (default '0g-reth'): " OG_RETH_SERVICE_NAME
     OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-0g-reth}
 
-    echo -e "\n${CYAN}Select Reth Pruning Mode:${RESET}"
-    echo -e "  ${GREEN}1) Full Node${RESET}  - Prunes receipts and historical states (keeps last 10,064 blocks; recommended for validator, saves space)"
-    echo -e "  ${GREEN}2) Archive Node${RESET}  - Retains all historical block data (requires significant disk space; recommended for full RPC)"
-    echo -e "  ${GREEN}3) Minimal Node${RESET}  - Most aggressive pruning (keeps last 10,064 blocks of state and 64 blocks of receipts)"
-    while true; do
-      read -p "Enter your choice (1, 2 or 3) [default 1]: " RETH_PRUNE_CHOICE
-      RETH_PRUNE_CHOICE=${RETH_PRUNE_CHOICE:-1}
-      case "$RETH_PRUNE_CHOICE" in
-        1) RETH_PRUNE_FLAG="--full"; break ;;
-        2) RETH_PRUNE_FLAG=""; break ;;
-        3) RETH_PRUNE_FLAG="--minimal"; break ;;
-        *) echo "Please enter 1, 2, or 3." ;;
-      esac
-    done
-    echo -e "Selected Reth pruning flag: ${CYAN}${RETH_PRUNE_FLAG:-None (Archive)}${RESET}"
     echo "Using Service Names: ${OG_SERVICE_NAME} and ${OG_RETH_SERVICE_NAME}"
 fi
 
@@ -107,7 +92,6 @@ fi
     echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\""
   else
     echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\""
-    echo "export RETH_PRUNE_FLAG=\"$RETH_PRUNE_FLAG\""
   fi
   if [ "$NODE_TYPE" = "validator" ]; then
     echo "export ETH_RPC_URL=\"$ETH_RPC_URL\""
@@ -375,8 +359,7 @@ ExecStart=$HOME/go/bin/0g-reth node \\
   --engine.memory-block-buffer-target 0 \\
   --bootnodes="enode://2bf74c837a98c94ad0fa8f5c58a428237d2040f9269fe622c3dbe4fef68141c28e2097d7af6ebaa041194257543dc112514238361a6498f9a38f70fd56493f96@8.221.140.134:30303" \\
   --port ${OG_PORT}303 \\
-  --nat extip:${EXTERNAL_IP} \\
-  ${RETH_PRUNE_FLAG:-}
+  --nat extip:${EXTERNAL_IP}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
