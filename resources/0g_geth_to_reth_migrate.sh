@@ -110,7 +110,7 @@ cp $HOME/aristotle-used/bin/0gchaind $HOME/go/bin/0gchaind
 mkdir -p $HOME/.0gchaind/0g-home/reth-home
 
 # Copy JWT and KZG files
-cp -f $HOME/aristotle-used/jwt.hex $HOME/.0gchaind/0g-home/ 2>/dev/null || true
+cp -f $HOME/aristotle-used/jwt.hex $HOME/.0gchaind/jwt.hex 2>/dev/null || true
 cp -f $HOME/aristotle-used/kzg-trusted-setup.json $HOME/.0gchaind/0g-home/ 2>/dev/null || true
 echo -e "${GREEN}Reth binary and config files ready.${RESET}"
 
@@ -307,7 +307,7 @@ ExecStart=$HOME/go/bin/0g-reth node \\
   --http.api eth,net,admin \\
   --authrpc.addr 0.0.0.0 \\
   --authrpc.port ${OG_PORT}551 \\
-  --authrpc.jwtsecret $HOME/.0gchaind/0g-home/jwt.hex \\
+  --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
   --datadir $HOME/.0gchaind/0g-home/reth-home \\
   --ipcpath $HOME/.0gchaind/0g-home/reth-home/eth-engine.ipc \\
   --engine.persistence-threshold 0 \\
@@ -344,7 +344,7 @@ ExecStart=$HOME/go/bin/0gchaind start \\
   --chaincfg.restaking.symbiotic-get-logs-block-range ${BLOCK_NUM:-1} \\
   --home $HOME/.0gchaind/0g-home/0gchaind-home \\
   --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/0g-home/kzg-trusted-setup.json \\
-  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/0g-home/jwt.hex \\
+  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/jwt.hex \\
   --chaincfg.block-store-service.enabled \\
   --chaincfg.node-api.enabled \\
   --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
@@ -375,7 +375,7 @@ ExecStart=$HOME/go/bin/0gchaind start \\
   --chaincfg.chain-spec mainnet \\
   --home $HOME/.0gchaind/0g-home/0gchaind-home \\
   --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/0g-home/kzg-trusted-setup.json \\
-  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/0g-home/jwt.hex \\
+  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/jwt.hex \\
   --chaincfg.block-store-service.enabled \\
   --chaincfg.node-api.enabled \\
   --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
