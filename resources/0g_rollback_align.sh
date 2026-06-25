@@ -83,16 +83,18 @@ rollback_align_cl_el() {
         fi
     fi
 
-    # Detect jwt.hex
-    local JWT_FILE
-    JWT_FILE="$(find $HOME/.0gchaind -type f -name jwt.hex 2>/dev/null | head -n 1 || true)"
-    local JWT_DIR=""
-    if [ -n "$JWT_FILE" ]; then
-        JWT_DIR="$(dirname "$JWT_FILE")"
+    # Verify jwt.hex and kzg-trusted-setup.json are present in $HOME/.0gchaind
+    local JWT_FILE="$HOME/.0gchaind/jwt.hex"
+    local KZG_FILE="$HOME/.0gchaind/kzg-trusted-setup.json"
+    local JWT_DIR="$HOME/.0gchaind"
+
+    if [ ! -f "$JWT_FILE" ]; then
+        echo -e "${RED}Error: jwt.hex not found in $HOME/.0gchaind/. CL rollback requires jwt.hex to be in $HOME/.0gchaind/.${RESET}"
+        return 1
     fi
 
-    if [ -z "$JWT_FILE" ] || [ -z "$JWT_DIR" ] || [ ! -f "$JWT_DIR/jwt.hex" ]; then
-        echo -e "${RED}Error: jwt.hex not found. CL rollback requires jwt.hex directory.${RESET}"
+    if [ ! -f "$KZG_FILE" ]; then
+        echo -e "${RED}Error: kzg-trusted-setup.json not found in $HOME/.0gchaind/. CL rollback requires kzg-trusted-setup.json to be in $HOME/.0gchaind/.${RESET}"
         return 1
     fi
 
