@@ -368,24 +368,52 @@ rollback_align_cl_el() {
     echo -e "${YELLOW}Starting EL (${EL_SERVICE})...${RESET}"
     sudo systemctl start ${EL_SERVICE}
 
-    # Wait for Engine API
-    echo -e "${YELLOW}Waiting for Reth Engine API port (${OG_PORT}551)...${RESET}"
-    local i api_ready="no"
-    for i in $(seq 1 30); do
-        if ss -tlnp | grep -q "${OG_PORT}551"; then
-            echo -e "${GREEN}Reth Engine API is ready.${RESET}"
-            api_ready="yes"
-            break
+    # Parse --authrpc.port from service file
+    local parsed_engine_port=""
+    local svc_file
+    svc_file=$(systemctl show -p FragmentPath "${EL_SERVICE}" 2>/dev/null | cut -d= -f2 || true)
+    if [ -n "$svc_file" ] && [ -f "$svc_file" ]; then
+        parsed_engine_port=$(grep -oP '--authrpc.port\s+\K[0-9]+' "$svc_file" 2>/dev/null | tail -n 1 || true)
+        if [ -z "$parsed_engine_port" ]; then
+            parsed_engine_port=$(grep -oE '--authrpc.port[ =][0-9]+' "$svc_file" 2>/dev/null | grep -oE '[0-9]+' | tail -n 1 || true)
         fi
+    fi
+
+    # Build Engine API port candidates
+    local engine_port_candidates
+    engine_port_candidates=()
+    if [ -n "$parsed_engine_port" ]; then
+        engine_port_candidates+=("$parsed_engine_port")
+    fi
+    engine_port_candidates+=(
+        "${OG_PORT}551"
+        "28551"
+        "26551"
+        "8551"
+    )
+
+    # Wait for Engine API
+    echo -e "${YELLOW}Waiting for Reth Engine API port to be ready...${RESET}"
+    local i p api_ready="no" detected_engine_port=""
+    for i in $(seq 1 30); do
+        for p in "${engine_port_candidates[@]}"; do
+            if ss -tlnp 2>/dev/null | grep -qE ":$p\b"; then
+                detected_engine_port="$p"
+                api_ready="yes"
+                break 2
+            fi
+        done
         sleep 1
     done
 
     if [ "$api_ready" != "yes" ]; then
-        echo -e "${RED}Engine API not detected after 30s.${RESET}"
+        echo -e "${RED}Engine API not detected after 30s (tried ports: ${engine_port_candidates[*]}).${RESET}"
         echo -e "${YELLOW}Do not start CL yet. Check EL logs first:${RESET}"
         echo -e "  sudo journalctl -u ${EL_SERVICE} -f -n 100"
         return 1
     fi
+
+    echo -e "${GREEN}Reth Engine API is ready on port ${detected_engine_port}.${RESET}"
 
     echo -e "${YELLOW}Starting CL (${CL_SERVICE})...${RESET}"
     sudo systemctl start ${CL_SERVICE}
