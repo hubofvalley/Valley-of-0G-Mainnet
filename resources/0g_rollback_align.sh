@@ -173,13 +173,36 @@ rollback_align_cl_el() {
     # ==== STEP 3: Detect CL height ====
     echo -e "\n${CYAN}[Step 3/8] Detecting local CL height...${RESET}"
 
-    local CL_RPC_URL CL_HEIGHT cl_status_res
-    CL_RPC_URL="http://127.0.0.1:${OG_PORT}657"
-    cl_status_res=$(curl -s "$CL_RPC_URL/status" 2>/dev/null || true)
-    CL_HEIGHT=$(echo "$cl_status_res" | jq -r '.result.sync_info.latest_block_height // empty' 2>/dev/null || true)
+    local parsed_cl_port=""
+    if [ -f "$CL_HOME/config/config.toml" ]; then
+        parsed_cl_port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+' "$CL_HOME/config/config.toml" 2>/dev/null | tail -n 1 || true)
+    fi
+
+    local CL_RPC_CANDIDATES
+    CL_RPC_CANDIDATES=()
+    if [ -n "$parsed_cl_port" ]; then
+        CL_RPC_CANDIDATES+=("http://127.0.0.1:${parsed_cl_port}")
+    fi
+    CL_RPC_CANDIDATES+=(
+        "http://127.0.0.1:${OG_PORT}657"
+        "http://127.0.0.1:28657"
+        "http://127.0.0.1:26657"
+    )
+
+    local CL_HEIGHT=""
+    local CL_RPC_URL=""
+    local cl_rpc cl_status_res
+    for cl_rpc in "${CL_RPC_CANDIDATES[@]}"; do
+        cl_status_res=$(curl -s "$cl_rpc/status" 2>/dev/null || true)
+        CL_HEIGHT=$(echo "$cl_status_res" | jq -r '.result.sync_info.latest_block_height // empty' 2>/dev/null || true)
+        if [ -n "$CL_HEIGHT" ] && [[ "$CL_HEIGHT" =~ ^[0-9]+$ ]] && [ "$CL_HEIGHT" -gt 0 ]; then
+            CL_RPC_URL="$cl_rpc"
+            break
+        fi
+    done
 
     if [ -z "$CL_HEIGHT" ] || ! [[ "$CL_HEIGHT" =~ ^[0-9]+$ ]] || [ "$CL_HEIGHT" -le 0 ]; then
-        echo -e "${YELLOW}Could not detect CL height from local CL RPC ($CL_RPC_URL).${RESET}"
+        echo -e "${YELLOW}Could not detect CL height from local CL RPC candidates.${RESET}"
         read -p "Enter current local CL height manually: " CL_HEIGHT
     fi
 
@@ -189,6 +212,9 @@ rollback_align_cl_el() {
     fi
 
     echo -e "${GREEN}Local CL height: ${CYAN}${CL_HEIGHT}${RESET}"
+    if [ -n "$CL_RPC_URL" ]; then
+        echo -e "  Using CL RPC:     ${CYAN}${CL_RPC_URL}${RESET}"
+    fi
 
     # ==== STEP 4: Choose target height ====
     echo -e "\n${CYAN}[Step 4/8] Choosing target height...${RESET}"
