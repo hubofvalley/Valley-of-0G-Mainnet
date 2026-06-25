@@ -158,6 +158,10 @@ rollback_align_cl_el() {
 
     if [ -z "$EL_HEIGHT" ] || [ "$EL_HEIGHT" = "0" ]; then
         echo -e "${RED}Could not detect local EL height from RPC or logs.${RESET}"
+        echo -e "${YELLOW}Please check your local EL (Reth) logs to find the latest block number.${RESET}"
+        echo -e "  Run this command in another terminal: ${CYAN}sudo journalctl -u ${EL_SERVICE} -n 50 --no-pager${RESET}"
+        echo -e "  Look for ${CYAN}'latest_block=XXXXX'${RESET} or similar."
+        echo -e "${RED}Do NOT use the consensus (CL/0gchaind) height (e.g., appHeight/stateHeight from 0gchaind replay logs) as the EL height.${RESET}"
         read -p "Enter local EL height manually: " EL_HEIGHT
         if ! [[ "$EL_HEIGHT" =~ ^[0-9]+$ ]] || [ "$EL_HEIGHT" -le 0 ]; then
             echo -e "${RED}Invalid height. Aborting.${RESET}"
