@@ -308,6 +308,7 @@ rollback_align_cl_el() {
                 break
             fi
 
+            echo "Running CL rollback..."
             out=$("$OGCHAIND_BIN" rollback --hard --home "$CL_HOME" --chaincfg.chain-spec mainnet 2>&1) || true
             echo "$out"
 
@@ -325,19 +326,19 @@ rollback_align_cl_el() {
             fi
 
             CL_HEIGHT="$new_cl_height"
-            echo -e "  ${CYAN}Rollback #${rollback_count} | CL height: ${CL_HEIGHT} | Target: ${target_height}${RESET}"
+            echo "Rollback result CL height: $CL_HEIGHT | Target: $target_height"
 
-            if [ "$CL_HEIGHT" -eq "$target_height" ]; then
-                echo -e "${GREEN}CL reached target height: ${target_height}${RESET}"
+            if [ "$CL_HEIGHT" = "$target_height" ]; then
+                echo "CL reached target height: $target_height"
                 break
             fi
 
-            if [ "$CL_HEIGHT" -lt "$target_height" ]; then
-                echo -e "${RED}CL went below target. Stop here.${RESET}"
+            if [ -n "$CL_HEIGHT" ] && [ "$CL_HEIGHT" -lt "$target_height" ]; then
+                echo "CL went below target. Stop here."
                 break
             fi
 
-            sleep 0.5
+            sleep 1
         done
     else
         echo -e "\n${GREEN}CL already at or below target height. Skipping CL rollback.${RESET}"
