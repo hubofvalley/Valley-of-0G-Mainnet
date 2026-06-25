@@ -281,10 +281,13 @@ rollback_align_cl_el() {
         return 0
     fi
 
-    # ==== STEP 6: Stop CL ====
-    echo -e "\n${CYAN}[Step 6/8] Stopping consensus client...${RESET}"
+    # ==== STEP 6: Stop services ====
+    echo -e "\n${CYAN}[Step 6/8] Stopping both services...${RESET}"
+    echo -e "${YELLOW}Stopping CL (${CL_SERVICE})...${RESET}"
     sudo systemctl stop ${CL_SERVICE} 2>/dev/null || true
-    echo -e "${GREEN}Consensus client stopped.${RESET}"
+    echo -e "${YELLOW}Stopping EL (${EL_SERVICE})...${RESET}"
+    sudo systemctl stop ${EL_SERVICE} 2>/dev/null || true
+    echo -e "${GREEN}Both services stopped.${RESET}"
 
     # ==== STEP 7: Rollback CL ====
     if [ "$will_rollback_cl" = "yes" ]; then
@@ -344,9 +347,6 @@ rollback_align_cl_el() {
     echo -e "\n${CYAN}[Step 7b/8] Handling EL (Reth)...${RESET}"
 
     if [ "$will_unwind_el" = "yes" ]; then
-        echo -e "${YELLOW}Stopping EL service for unwind...${RESET}"
-        sudo systemctl stop ${EL_SERVICE} 2>/dev/null || true
-
         echo -e "${YELLOW}Running: 0g-reth stage unwind to-block ${target_height}${RESET}"
         if ! "$OG_RETH_BIN" stage unwind \
             --chain "$GENESIS" \
