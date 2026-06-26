@@ -25,11 +25,11 @@
         "release_artifact_pattern": "aristotle-<version>.tar.gz",
         "deadline_note": "v1.0.6 'Must upgrade before 2026-06-26 00:00 UTC'. URL artifact v1.0.6 pakai prefix 'v' (releases/download/v1.0.6/), versi lama tidak.",
         "ships": {
-          "0gchaind": "TBD",
+          "0gchaind": "v1.36.0",
           "geth": "1.15.11",
           "reth": "1.8.1"
         },
-        "ships_note": "Versi UPSTREAM komponen yang DIBUNGKUS bundle v1.0.6. INI referensi pembanding gv-ops vs versi binary live (apel-vs-apel) — JANGAN bandingkan versi binary (mis. reth 1.8.1) dengan versi bundle (v1.0.6). geth 1.15.11 + reth 1.8.1 diverifikasi live di GV-2 (2026-06-26). 0gchaind: TBD — capture via `0gchaind version` di node lalu isi."
+        "ships_note": "Versi UPSTREAM komponen yang DIBUNGKUS bundle v1.0.6. INI referensi pembanding gv-ops vs versi binary live (apel-vs-apel) — JANGAN bandingkan versi binary (mis. reth 1.8.1) dengan versi bundle (v1.0.6). 0gchaind v1.36.0, geth 1.15.11, dan reth 1.8.1 diverifikasi live di GV-2 (2026-06-26)."
       },
       "live_verified": {
         "bundle_version": "v1.0.6",
