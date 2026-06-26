@@ -5,7 +5,7 @@
   "last_updated": "2026-06-26",
   "source_of_truth": "github.com/hubofvalley/Valley-of-0G-Mainnet (resources/*.sh)",
   "verification_status": "live_validated_partial",
-  "verification_note": "Validator divalidasi live di GV-2 (2026-06-26) via gv-ops: bundle Aristotle v1.0.6, reth 1.8.1 aktif, geth 1.15.11 inactive. Model versi = bundle (v1.0.6, punya deadline upgrade) + ships (versi upstream komponen yg dibungkus). gv-ops bandingkan binary live vs bundle.ships, BUKAN vs versi bundle. Storage/storage-kv/alignment belum diinstall di GV-2 → masih seed dari script (needs_live_verification).",
+  "verification_note": "Validator was live-validated on GV-2 (2026-06-26) via gv-ops: Aristotle bundle v1.0.6, reth 1.8.1 active, geth 1.15.11 inactive. Version model: bundle (v1.0.6, upgrade deadline applies) plus ships (upstream component versions shipped inside the bundle). gv-ops compares live binaries against bundle.ships, not against the bundle version. Storage/storage-kv/alignment are not installed on GV-2 yet, so those values are still seeded from scripts (needs_live_verification).",
   "chain": {
     "chain_spec": "mainnet",
     "evm_chain_id": 16661,
@@ -23,18 +23,18 @@
         "version_options": ["v1.0.2", "v1.0.3", "v1.0.4", "v1.0.6"],
         "release_repo": "https://github.com/0gfoundation/0gchain-Aristotle",
         "release_artifact_pattern": "aristotle-<version>.tar.gz",
-        "deadline_note": "v1.0.6 'Must upgrade before 2026-06-26 00:00 UTC'. URL artifact v1.0.6 pakai prefix 'v' (releases/download/v1.0.6/), versi lama tidak.",
+        "deadline_note": "v1.0.6 'Must upgrade before 2026-06-26 00:00 UTC'. The v1.0.6 artifact URL uses the 'v' prefix (releases/download/v1.0.6/); older versions do not.",
         "ships": {
           "0gchaind": "v1.36.0",
           "geth": "1.15.11",
           "reth": "1.8.1"
         },
-        "ships_note": "Versi UPSTREAM komponen yang DIBUNGKUS bundle v1.0.6. INI referensi pembanding gv-ops vs versi binary live (apel-vs-apel) — JANGAN bandingkan versi binary (mis. reth 1.8.1) dengan versi bundle (v1.0.6). 0gchaind v1.36.0, geth 1.15.11, dan reth 1.8.1 diverifikasi live di GV-2 (2026-06-26)."
+        "ships_note": "Upstream component versions shipped inside bundle v1.0.6. This is the apples-to-apples comparison target for gv-ops vs live binary versions; do not compare binary versions (for example reth 1.8.1) against the bundle version (v1.0.6). 0gchaind v1.36.0, geth 1.15.11, and reth 1.8.1 were live-validated on GV-2 (2026-06-26)."
       },
       "live_verified": {
         "bundle_version": "v1.0.6",
         "date": "2026-06-26",
-        "scope": "RPC node GV-2: reth 1.8.1 AKTIF (execution client terpilih), geth 1.15.11 terpasang tapi inactive, 0gchaind aktif"
+        "scope": "RPC node GV-2: reth 1.8.1 active (selected execution client), geth 1.15.11 installed but inactive, 0gchaind active"
       },
       "consensus_binary": "0gchaind",
       "execution_client": {
@@ -43,7 +43,7 @@
         "options": ["geth", "reth"],
         "geth_binary": "0g-geth",
         "reth_binary": "0g-reth",
-        "note": "Pilihan execution client: geth ATAU reth (XOR) — node jalan SATU saja. gv-ops HANYA cek client yang aktif; client yang sengaja inactive JANGAN di-flag CHECK. Node GV-2 pakai reth."
+        "note": "Execution client choice: geth OR reth (XOR); the node runs exactly one. gv-ops checks only the active client; an intentionally inactive client must not be flagged as CHECK. Node GV-2 uses reth."
       },
       "services": {
         "consensus": "0gchaind",
@@ -67,7 +67,7 @@
       "binaries": ["zgs_node"],
       "release_repo": "https://github.com/0gfoundation/0g-storage-node",
       "version_current": "v1.1.0",
-      "version_source": "build dari branch main (env ZGS_NODE_VERSION=v1.1.0)",
+      "version_source": "built from the main branch (env ZGS_NODE_VERSION=v1.1.0)",
       "services": ["zgs"],
       "config": "$HOME/0g-storage-node/run/config-mainnet.toml",
       "install_script": "resources/0g_storage_node_install.sh",
