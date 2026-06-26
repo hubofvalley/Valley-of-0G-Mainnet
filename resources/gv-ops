@@ -1,0 +1,311 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+FORMAT="human"
+ARGS=()
+
+for arg in "$@"; do
+  if [ "$arg" = "--json" ]; then
+    FORMAT="json"
+  else
+    ARGS+=("$arg")
+  fi
+done
+
+COMMAND="${ARGS[0]:-}"
+NETWORK="${ARGS[1]:-}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VERSIONS_FILE="${GV_OPS_VERSIONS:-$REPO_DIR/VERSIONS.json}"
+CL_RPC="${GV_OPS_0G_CL_RPC:-http://127.0.0.1:26657}"
+EL_RPC="${GV_OPS_0G_EL_RPC:-http://127.0.0.1:8545}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  gv-ops 0g status [--json]
+  gv-ops 0g versions [--json]
+  gv-ops 0g check-upgrade [--json]
+  gv-ops 0g health [--json]
+  gv-ops 0g endpoints [--json]
+
+Read-only only. Override manifest path with GV_OPS_VERSIONS.
+EOF
+}
+
+die_json() {
+  jq -n --arg ok "false" --arg error "$1" '{ok: ($ok == "true"), error: $error}'
+}
+
+need_jq() {
+  if ! command -v jq >/dev/null 2>&1; then
+    if [ "$FORMAT" = "json" ]; then
+      printf '{"ok":false,"error":"jq is required"}\n'
+    else
+      echo "ERROR: jq is required"
+    fi
+    exit 1
+  fi
+}
+
+json_get() {
+  jq -r "$1 // empty" "$VERSIONS_FILE" 2>/dev/null
+}
+
+component_version() {
+  json_get ".components.$1.version_current"
+}
+
+service_state() {
+  local service="$1"
+  local state
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "systemctl-unavailable"
+    return
+  fi
+  state="$(systemctl is-active "$service" 2>/dev/null)"
+  if [ $? -eq 0 ] && [ -n "$state" ]; then
+    echo "$state"
+  else
+    echo "${state:-inactive}"
+  fi
+}
+
+binary_path() {
+  local bin="$1"
+  if command -v "$bin" >/dev/null 2>&1; then
+    command -v "$bin"
+    return
+  fi
+  if [ -x "$HOME/go/bin/$bin" ]; then
+    echo "$HOME/go/bin/$bin"
+    return
+  fi
+  echo ""
+}
+
+binary_version() {
+  local bin="$1"
+  local path
+  path="$(binary_path "$bin")"
+  if [ -z "$path" ]; then
+    echo "missing"
+    return
+  fi
+  "$path" version 2>/dev/null | head -n1 | grep -Eo 'v?[0-9]+(\.[0-9]+)+' | head -n1 || \
+    "$path" --version 2>/dev/null | head -n1 | grep -Eo 'v?[0-9]+(\.[0-9]+)+' | head -n1 || \
+    echo "unknown"
+}
+
+curl_json() {
+  local url="$1"
+  local data="${2:-}"
+  if ! command -v curl >/dev/null 2>&1; then
+    return 1
+  fi
+  if [ -n "$data" ]; then
+    curl -fsS --max-time 4 -H "Content-Type: application/json" -d "$data" "$url" 2>/dev/null
+  else
+    curl -fsS --max-time 4 "$url" 2>/dev/null
+  fi
+}
+
+http_code() {
+  local url="$1"
+  if ! command -v curl >/dev/null 2>&1; then
+    echo ""
+    return 1
+  fi
+  curl -sS --max-time 4 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null
+}
+
+hex_to_dec() {
+  local hex="$1"
+  if [[ "$hex" =~ ^0x[0-9a-fA-F]+$ ]]; then
+    printf "%d" "$hex" 2>/dev/null || echo ""
+  else
+    echo ""
+  fi
+}
+
+cl_height() {
+  curl_json "$CL_RPC/status" | jq -r '.result.sync_info.latest_block_height // empty' 2>/dev/null
+}
+
+cl_syncing() {
+  curl_json "$CL_RPC/status" | jq -r '.result.sync_info.catching_up // empty' 2>/dev/null
+}
+
+cl_peers() {
+  curl_json "$CL_RPC/net_info" | jq -r '.result.n_peers // empty' 2>/dev/null
+}
+
+el_height() {
+  local hex
+  hex="$(curl_json "$EL_RPC" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result // empty' 2>/dev/null)"
+  hex_to_dec "$hex"
+}
+
+el_peers() {
+  local hex
+  hex="$(curl_json "$EL_RPC" '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' | jq -r '.result // empty' 2>/dev/null)"
+  hex_to_dec "$hex"
+}
+
+rows_json() {
+  local cl_service el_geth_service el_reth_service zgs_service zgskv_service
+  cl_service="$(json_get '.components.validator.services.consensus')"
+  el_geth_service="$(json_get '.components.validator.services.execution_geth')"
+  el_reth_service="$(json_get '.components.validator.services.execution_reth')"
+  zgs_service="$(json_get '.components.storage_node.services[0]')"
+  zgskv_service="$(json_get '.components.storage_kv.services[0]')"
+
+  jq -n \
+    --arg cl_service "$cl_service" --arg cl_bin "$(json_get '.components.validator.consensus_binary')" --arg cl_live "$(binary_version "$(json_get '.components.validator.consensus_binary')")" --arg cl_expected "$(component_version validator)" --arg cl_state "$(service_state "$cl_service")" \
+    --arg geth_service "$el_geth_service" --arg geth_live "$(binary_version "$(json_get '.components.validator.execution_client.geth_binary')")" --arg geth_expected "$(component_version validator)" --arg geth_state "$(service_state "$el_geth_service")" \
+    --arg reth_service "$el_reth_service" --arg reth_live "$(binary_version "$(json_get '.components.validator.execution_client.reth_binary')")" --arg reth_expected "$(component_version validator)" --arg reth_state "$(service_state "$el_reth_service")" \
+    --arg zgs_service "$zgs_service" --arg zgs_bin "$(json_get '.components.storage_node.binaries[0]')" --arg zgs_live "$(binary_version "$(json_get '.components.storage_node.binaries[0]')")" --arg zgs_expected "$(component_version storage_node)" --arg zgs_state "$(service_state "$zgs_service")" \
+    --arg zgskv_service "$zgskv_service" --arg zgskv_bin "$(json_get '.components.storage_kv.binaries[0]')" --arg zgskv_live "$(binary_version "$(json_get '.components.storage_kv.binaries[0]')")" --arg zgskv_expected "$(component_version storage_kv)" --arg zgskv_state "$(service_state "$zgskv_service")" \
+    '[
+      {component:"validator.consensus", service:$cl_service, binary:$cl_bin, live_version:$cl_live, expected_version:$cl_expected, service_state:$cl_state},
+      {component:"validator.execution_geth", service:$geth_service, binary:"0g-geth", live_version:$geth_live, expected_version:$geth_expected, service_state:$geth_state},
+      {component:"validator.execution_reth", service:$reth_service, binary:"0g-reth", live_version:$reth_live, expected_version:$reth_expected, service_state:$reth_state},
+      {component:"storage", service:$zgs_service, binary:$zgs_bin, live_version:$zgs_live, expected_version:$zgs_expected, service_state:$zgs_state},
+      {component:"storage_kv", service:$zgskv_service, binary:$zgskv_bin, live_version:$zgskv_live, expected_version:$zgskv_expected, service_state:$zgskv_state}
+    ]'
+}
+
+cmd_status() {
+  local rows clh els sync
+  rows="$(rows_json)"
+  clh="$(cl_height)"
+  els="$(el_height)"
+  sync="$(cl_syncing)"
+  if [ "$FORMAT" = "json" ]; then
+    jq -n --argjson components "$rows" --arg cl_height "$clh" --arg el_height "$els" --arg catching_up "$sync" \
+      '{ok:true, command:"status", components:$components, sync:{consensus_height:$cl_height, execution_height:$el_height, catching_up:$catching_up}}'
+    return
+  fi
+  echo "$rows" | jq -r '.[] | [.binary, .live_version, .service_state] | @tsv' | while IFS=$'\t' read -r bin ver state; do
+    printf "%-10s %-10s %s\n" "$bin" "$ver" "$state"
+  done
+  [ -n "$clh$els$sync" ] && printf "sync       CL=%s EL=%s catching_up=%s\n" "${clh:-unknown}" "${els:-unknown}" "${sync:-unknown}"
+  return 0
+}
+
+cmd_versions() {
+  local rows
+  rows="$(rows_json)"
+  if [ "$FORMAT" = "json" ]; then
+    jq -n --argjson components "$rows" '{ok:true, command:"versions", components:$components}'
+    return
+  fi
+  echo "$rows" | jq -r '.[] | [.component, .binary, .live_version, .expected_version] | @tsv' | while IFS=$'\t' read -r comp bin live expected; do
+    printf "%-25s %-10s live=%-10s expected=%s\n" "$comp" "$bin" "$live" "$expected"
+  done
+  return 0
+}
+
+cmd_check_upgrade() {
+  local rows checks
+  rows="$(rows_json)"
+  checks="$(echo "$rows" | jq '[.[] | . + {ok: ((.live_version == .expected_version) and (.live_version != "missing") and (.live_version != "unknown"))}]')"
+  if [ "$FORMAT" = "json" ]; then
+    jq -n --argjson components "$checks" '{ok:true, command:"check-upgrade", components:$components}'
+    return
+  fi
+  echo "$checks" | jq -r '.[] | [.component, .live_version, .expected_version, (if .ok then "OK" else "CHECK" end)] | @tsv' | while IFS=$'\t' read -r comp live expected result; do
+    printf "%-25s %-10s latest %-10s %s\n" "$comp:" "$live" "$expected" "$result"
+  done
+  return 0
+}
+
+cmd_health() {
+  local clh elh clp elp disk mem
+  clh="$(cl_height)"
+  elh="$(el_height)"
+  clp="$(cl_peers)"
+  elp="$(el_peers)"
+  disk="$(df -h / 2>/dev/null | awk 'NR==2 {print $4 " free (" $5 " used)"}')"
+  mem="$(free -h 2>/dev/null | awk '/^Mem:/ {print $7 " available / " $2 " total"}')"
+  if [ "$FORMAT" = "json" ]; then
+    jq -n --arg cl_height "$clh" --arg el_height "$elh" --arg cl_peers "$clp" --arg el_peers "$elp" --arg disk "$disk" --arg mem "$mem" \
+      '{ok:true, command:"health", heights:{consensus:$cl_height, execution:$el_height}, peers:{consensus:$cl_peers, execution:$el_peers}, host:{disk:$disk, memory:$mem}}'
+    return
+  fi
+  printf "disk       %s\n" "${disk:-unknown}"
+  printf "memory     %s\n" "${mem:-unknown}"
+  printf "height     CL=%s EL=%s\n" "${clh:-unknown}" "${elh:-unknown}"
+  printf "peers      CL=%s EL=%s\n" "${clp:-unknown}" "${elp:-unknown}"
+  return 0
+}
+
+cmd_endpoints() {
+  local endpoints checks
+  endpoints="$(jq -r '.endpoints | to_entries[] | select(.value | type == "string") | [.key, .value] | @tsv' "$VERSIONS_FILE")"
+  checks="$(
+    echo "$endpoints" | while IFS=$'\t' read -r key value; do
+      local status detail code
+      status="skipped"
+      detail="unsupported"
+      if [[ "$value" =~ ^https?:// ]]; then
+        status="fail"
+        detail="no response"
+        case "$key" in
+          cosmos_rpc)
+            if curl_json "$value/status" >/dev/null; then status="ok"; detail="/status"; fi
+            ;;
+          evm_rpc)
+            if curl_json "$value" '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' >/dev/null; then status="ok"; detail="eth_chainId"; fi
+            ;;
+          cosmos_rest_api)
+            code="$(http_code "$value/")"
+            if [ -n "$code" ] && [ "$code" != "000" ]; then status="reachable"; detail="HTTP $code"; fi
+            ;;
+          *)
+            if curl_json "$value" >/dev/null; then status="ok"; detail="GET"; fi
+            ;;
+        esac
+      elif [[ "$value" =~ ^wss?:// ]]; then
+        status="skipped"
+        detail="websocket probe not implemented"
+      fi
+      jq -n --arg name "$key" --arg url "$value" --arg status "$status" --arg detail "$detail" \
+        '{name:$name, url:$url, status:$status, detail:$detail}'
+    done | jq -s '.'
+  )"
+  if [ "$FORMAT" = "json" ]; then
+    jq -n --argjson endpoints "$checks" '{ok:true, command:"endpoints", endpoints:$endpoints}'
+    return
+  fi
+  echo "$checks" | jq -r '.[] | [.name, .status, .url, .detail] | @tsv' | while IFS=$'\t' read -r key status value detail; do
+    printf "%-20s %-8s %s (%s)\n" "$key" "$status" "$value" "$detail"
+  done
+  return 0
+}
+
+need_jq
+
+if [ ! -r "$VERSIONS_FILE" ]; then
+  if [ "$FORMAT" = "json" ]; then
+    die_json "VERSIONS.json not readable: $VERSIONS_FILE"
+  else
+    echo "ERROR: VERSIONS.json not readable: $VERSIONS_FILE"
+  fi
+  exit 1
+fi
+
+if [ "$COMMAND" != "0g" ]; then
+  usage
+  exit 1
+fi
+
+case "$NETWORK" in
+  status) cmd_status ;;
+  versions) cmd_versions ;;
+  check-upgrade) cmd_check_upgrade ;;
+  health) cmd_health ;;
+  endpoints) cmd_endpoints ;;
+  *) usage; exit 1 ;;
+esac
