@@ -17,7 +17,12 @@
     "validator": {
       "name": "0gchain-Aristotle",
       "role": "validator",
-      "needs_live_verification": true,
+      "needs_live_verification": false,
+      "live_verified": {
+        "version": "v1.0.6",
+        "date": "2026-06-26",
+        "scope": "validator + RPC node GV (dikonfirmasi Bertold)"
+      },
       "consensus_binary": "0gchaind",
       "execution_client": {
         "selectable": true,
