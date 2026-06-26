@@ -4,8 +4,8 @@
   "human_name": "Valley of 0G — Mainnet",
   "last_updated": "2026-06-26",
   "source_of_truth": "github.com/hubofvalley/Valley-of-0G-Mainnet (resources/*.sh)",
-  "verification_status": "seeded_from_scripts",
-  "verification_note": "Field versi di-seed dari resources/*.sh (post-pull b575631). Validator v1.0.6 ditandai 'must upgrade before 2026-06-26' — itu HARI INI; konfirmasi node live sudah di v1.0.6. Setiap komponen punya flag 'needs_live_verification'.",
+  "verification_status": "live_validated_partial",
+  "verification_note": "Validator divalidasi live di GV-2 (2026-06-26) via gv-ops: bundle Aristotle v1.0.6, reth 1.8.1 aktif, geth 1.15.11 inactive. Model versi = bundle (v1.0.6, punya deadline upgrade) + ships (versi upstream komponen yg dibungkus). gv-ops bandingkan binary live vs bundle.ships, BUKAN vs versi bundle. Storage/storage-kv/alignment belum diinstall di GV-2 → masih seed dari script (needs_live_verification).",
   "chain": {
     "chain_spec": "mainnet",
     "evm_chain_id": 16661,
@@ -17,25 +17,34 @@
     "validator": {
       "name": "0gchain-Aristotle",
       "role": "validator",
-      "needs_live_verification": false,
+      "bundle": {
+        "name": "Aristotle",
+        "version_current": "v1.0.6",
+        "version_options": ["v1.0.2", "v1.0.3", "v1.0.4", "v1.0.6"],
+        "release_repo": "https://github.com/0gfoundation/0gchain-Aristotle",
+        "release_artifact_pattern": "aristotle-<version>.tar.gz",
+        "deadline_note": "v1.0.6 'Must upgrade before 2026-06-26 00:00 UTC'. URL artifact v1.0.6 pakai prefix 'v' (releases/download/v1.0.6/), versi lama tidak.",
+        "ships": {
+          "0gchaind": "TBD",
+          "geth": "1.15.11",
+          "reth": "1.8.1"
+        },
+        "ships_note": "Versi UPSTREAM komponen yang DIBUNGKUS bundle v1.0.6. INI referensi pembanding gv-ops vs versi binary live (apel-vs-apel) — JANGAN bandingkan versi binary (mis. reth 1.8.1) dengan versi bundle (v1.0.6). geth 1.15.11 + reth 1.8.1 diverifikasi live di GV-2 (2026-06-26). 0gchaind: TBD — capture via `0gchaind version` di node lalu isi."
+      },
       "live_verified": {
-        "version": "v1.0.6",
+        "bundle_version": "v1.0.6",
         "date": "2026-06-26",
-        "scope": "validator + RPC node GV (dikonfirmasi Bertold)"
+        "scope": "RPC node GV-2: reth 1.8.1 AKTIF (execution client terpilih), geth 1.15.11 terpasang tapi inactive, 0gchaind aktif"
       },
       "consensus_binary": "0gchaind",
       "execution_client": {
         "selectable": true,
+        "xor_active": true,
         "options": ["geth", "reth"],
         "geth_binary": "0g-geth",
         "reth_binary": "0g-reth",
-        "note": "Install script v1.0.6 menawarkan pilihan execution client: geth (default lama) atau reth (Rust, sync lebih cepat, resource lebih rendah). Migrasi geth->reth tersedia via script terpisah."
+        "note": "Pilihan execution client: geth ATAU reth (XOR) — node jalan SATU saja. gv-ops HANYA cek client yang aktif; client yang sengaja inactive JANGAN di-flag CHECK. Node GV-2 pakai reth."
       },
-      "release_repo": "https://github.com/0gfoundation/0gchain-Aristotle",
-      "release_artifact_pattern": "aristotle-<version>.tar.gz",
-      "version_current": "v1.0.6",
-      "version_options": ["v1.0.2", "v1.0.3", "v1.0.4", "v1.0.6"],
-      "version_note": "v1.0.6 ditandai 'Latest. Must upgrade before 2026-06-26 00:00 UTC' (= hari ini). URL artifact v1.0.6 pakai prefix 'v' (releases/download/v1.0.6/), versi lama tidak.",
       "services": {
         "consensus": "0gchaind",
         "execution_geth": "0g-geth",
