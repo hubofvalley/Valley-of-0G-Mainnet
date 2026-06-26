@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.0",
+  "network": "0g-mainnet",
+  "human_name": "Valley of 0G — Mainnet",
+  "last_updated": "2026-06-26",
+  "source_of_truth": "github.com/hubofvalley/Valley-of-0G-Mainnet (resources/*.sh)",
+  "verification_status": "seeded_from_scripts",
+  "verification_note": "Field versi di-seed dari resources/*.sh (post-pull b575631). Validator v1.0.6 ditandai 'must upgrade before 2026-06-26' — itu HARI INI; konfirmasi node live sudah di v1.0.6. Setiap komponen punya flag 'needs_live_verification'.",
+  "chain": {
+    "chain_spec": "mainnet",
+    "evm_chain_id": 16661,
+    "consensus_default_rpc_port": 26657,
+    "evm_default_rpc_port": 8545,
+    "go_version": "1.22.5"
+  },
+  "components": {
+    "validator": {
+      "name": "0gchain-Aristotle",
+      "role": "validator",
+      "needs_live_verification": true,
+      "consensus_binary": "0gchaind",
+      "execution_client": {
+        "selectable": true,
+        "options": ["geth", "reth"],
+        "geth_binary": "0g-geth",
+        "reth_binary": "0g-reth",
+        "note": "Install script v1.0.6 menawarkan pilihan execution client: geth (default lama) atau reth (Rust, sync lebih cepat, resource lebih rendah). Migrasi geth->reth tersedia via script terpisah."
+      },
+      "release_repo": "https://github.com/0gfoundation/0gchain-Aristotle",
+      "release_artifact_pattern": "aristotle-<version>.tar.gz",
+      "version_current": "v1.0.6",
+      "version_options": ["v1.0.2", "v1.0.3", "v1.0.4", "v1.0.6"],
+      "version_note": "v1.0.6 ditandai 'Latest. Must upgrade before 2026-06-26 00:00 UTC' (= hari ini). URL artifact v1.0.6 pakai prefix 'v' (releases/download/v1.0.6/), versi lama tidak.",
+      "services": {
+        "consensus": "0gchaind",
+        "execution_geth": "0g-geth",
+        "execution_reth": "0g-reth"
+      },
+      "home_dir": "$HOME/.0gchaind",
+      "binary_install_dir": "$HOME/go/bin",
+      "install_script": "resources/0g_validator_node_aristotle_install.sh",
+      "update_script": "resources/0g_validator_node_update_manual.sh",
+      "env_overrides": {
+        "OG_SERVICE_NAME": "0gchaind",
+        "OG_GETH_SERVICE_NAME": "0g-geth",
+        "OG_RETH_SERVICE_NAME": "0g-reth"
+      }
+    },
+    "storage_node": {
+      "name": "0g-storage-node",
+      "role": "storage",
+      "needs_live_verification": true,
+      "binaries": ["zgs_node"],
+      "release_repo": "https://github.com/0gfoundation/0g-storage-node",
+      "version_current": "v1.1.0",
+      "version_source": "build dari branch main (env ZGS_NODE_VERSION=v1.1.0)",
+      "services": ["zgs"],
+      "config": "$HOME/0g-storage-node/run/config-mainnet.toml",
+      "install_script": "resources/0g_storage_node_install.sh",
+      "update_script": "resources/0g_storage_node_update.sh"
+    },
+    "storage_kv": {
+      "name": "0g-storage-kv",
+      "role": "storage-kv",
+      "needs_live_verification": true,
+      "binaries": ["zgs_kv"],
+      "release_repo": "https://github.com/0gfoundation/0g-storage-kv",
+      "version_current": "v1.4.0",
+      "pinned_commit": "99c91d95a1d664ffdc9700ef492a00bd76c9c5d1",
+      "services": ["zgskv"],
+      "config": "$HOME/0g-storage-kv/run/config.toml",
+      "install_script": "resources/0g_storage_kv_install.sh",
+      "update_script": "resources/0g_storage_kv_update.sh"
+    },
+    "ai_alignment_node": {
+      "name": "alignment-node",
+      "role": "alignment",
+      "needs_live_verification": true,
+      "release_repo": "https://github.com/0gfoundation/alignment-node-release",
+      "version_current": "v1.0.0",
+      "release_artifact": "alignment-node.tar.gz",
+      "chain_id": 16661,
+      "install_script": "resources/0g_ai_alignment_node_install.sh"
+    }
+  },
+  "endpoints": {
+    "public_provider": "Grand Valley",
+    "cosmos_rpc": "https://lightnode-rpc-mainnet-0g.grandvalleys.com",
+    "evm_rpc": "https://lightnode-json-rpc-mainnet-0g.grandvalleys.com",
+    "cosmos_rest_api": "https://lightnode-api-mainnet-0g.grandvalleys.com",
+    "cosmos_websocket": "wss://lightnode-rpc-mainnet-0g.grandvalleys.com/websocket",
+    "evm_websocket": "wss://lightnode-wss-mainnet-0g.grandvalleys.com"
+  },
+  "scripts": {
+    "menu_entrypoint": "resources/valleyof0G.sh",
+    "snapshots": {
+      "standard_zgs": "resources/0g_standard_zgs_node_snapshot.sh",
+      "turbo_zgs": "resources/0g_turbo_zgs_node_snapshot.sh",
+      "apply": "resources/apply_snapshot.sh"
+    },
+    "scheduler": "resources/0g_node_schedule.sh",
+    "cosmovisor_migration": "resources/cosmovisor_migration.sh",
+    "geth_to_reth_migration": "resources/0g_geth_to_reth_migrate.sh",
+    "rollback_align_cl_el": "resources/0g_rollback_align.sh",
+    "storage_node_change": "resources/0g_storage_node_change.sh"
+  },
+  "explorer": "https://explorer.0g.ai/mainnet/validators",
+  "docs": {
+    "validator": "docs/validator-node.md",
+    "storage_node": "docs/storage-node.md",
+    "storage_kv": "docs/storage-kv.md",
+    "snapshots": "docs/snapshots.md",
+    "scheduler": "docs/scheduler.md"
+  }
+}
