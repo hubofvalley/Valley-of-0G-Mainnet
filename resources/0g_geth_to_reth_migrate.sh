@@ -41,6 +41,20 @@ OG_GETH_SERVICE_NAME="${OG_GETH_SERVICE_NAME:-0g-geth}"
 read -p "Enter Reth Service Name (default '0g-reth'): " OG_RETH_SERVICE_NAME
 OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-0g-reth}
 
+# ===== PRUNING MODE =====
+echo -e "\n${CYAN}Select Pruning Mode for Reth:${RESET}"
+echo -e "  ${GREEN}1) Pruned${RESET}  - Both CL & EL prune old data (efficient storage, recommended for RPC)"
+echo -e "  ${GREEN}2) Archive${RESET} - No pruning, keep full history (requires more storage)"
+while true; do
+  read -p "Enter your choice (1 or 2) [default: 1]: " PRUNE_CHOICE
+  PRUNE_CHOICE=${PRUNE_CHOICE:-1}
+  case "$PRUNE_CHOICE" in
+    1) ENABLE_RETH_PRUNE="yes"; break ;;
+    2) ENABLE_RETH_PRUNE="no"; break ;;
+    *) echo "Please enter 1 or 2." ;;
+  esac
+done
+echo -e "Pruning mode: ${CYAN}$([ "$ENABLE_RETH_PRUNE" = "yes" ] && echo "Pruned (CL+EL)" || echo "Archive (no prune)")${RESET}"
 
 # ETH RPC for validator restaking (optional, only if validator mode)
 if [ "${NODE_TYPE:-}" = "validator" ] && [ -z "${ETH_RPC_URL:-}" ]; then
@@ -56,6 +70,7 @@ echo -e "  Port Prefix:    ${OG_PORT}"
 echo -e "  Consensus Svc:  ${OG_SERVICE_NAME}"
 echo -e "  Geth Svc (old): ${OG_GETH_SERVICE_NAME}"
 echo -e "  Reth Svc (new): ${OG_RETH_SERVICE_NAME}"
+echo -e "  Pruning Mode:   $([ "$ENABLE_RETH_PRUNE" = "yes" ] && echo "Pruned (CL+EL)" || echo "Archive")"
 echo ""
 
 
@@ -158,6 +173,26 @@ fi
 $HOME/go/bin/0g-reth init \
   --chain $GENESIS_JSON \
   --datadir $HOME/.0gchaind/0g-home/reth-home
+
+# Create Reth prune config (reth.toml) if pruning enabled
+if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
+    echo -e "${CYAN}Creating Reth prune configuration (reth.toml)...${RESET}"
+    cat > $HOME/.0gchaind/0g-home/reth-home/reth.toml << 'RETHEOF'
+# 0G Reth Pruning Configuration
+# MINIMUM_PRUNING_DISTANCE = 10064 blocks (2 epochs * 32 + 10000 safety margin)
+
+[prune]
+block_interval = 5
+
+[prune.segments]
+sender_recovery = { distance = 10064 }
+transaction_lookup = { distance = 10064 }
+receipts = { distance = 10064 }
+account_history = { distance = 10064 }
+storage_history = { distance = 10064 }
+RETHEOF
+    echo -e "${GREEN}Reth prune config created at reth-home/reth.toml${RESET}"
+fi
 
 # Create trim script
 cat > $HOME/.0gchaind/0g-home/trim_export.py <<'PYEOF'
@@ -287,6 +322,13 @@ sed -i "s|^rpc-dial-url *=.*|rpc-dial-url = \"http://localhost:${OG_PORT}551\"|"
 sudo systemctl disable ${OG_GETH_SERVICE_NAME} 2>/dev/null || true
 sudo rm -f /etc/systemd/system/${OG_GETH_SERVICE_NAME}.service 2>/dev/null || true
 
+# Build Reth config flag
+if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
+    RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\\\"
+else
+    RETH_CONFIG_FLAG=""
+fi
+
 # Create Reth service
 sudo tee /etc/systemd/system/${OG_RETH_SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
@@ -299,10 +341,11 @@ Type=simple
 WorkingDirectory=$HOME/.0gchaind
 ExecStart=$HOME/go/bin/0g-reth node \\
   --chain $GENESIS_JSON \\
+  ${RETH_CONFIG_FLAG}
   --http \\
   --http.addr 0.0.0.0 \\
   --http.port ${OG_PORT}545 \\
-  --http.api eth,net,admin \\
+  --http.api eth,net,web3,txpool \\
   --authrpc.addr 0.0.0.0 \\
   --authrpc.port ${OG_PORT}551 \\
   --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
@@ -322,6 +365,13 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# Determine CL pruning flag based on user choice
+if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
+    CL_PRUNE_FLAG=""
+else
+    CL_PRUNE_FLAG="  --pruning=nothing \\\\"
+fi
 
 # Update consensus service file
 if [ "${NODE_TYPE:-}" = "validator" ] && [ -n "${ETH_RPC_URL:-}" ]; then
@@ -347,7 +397,7 @@ ExecStart=$HOME/go/bin/0gchaind start \\
   --chaincfg.node-api.enabled \\
   --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
   --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551 \\
-  --pruning=nothing \\
+${CL_PRUNE_FLAG}
   --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656
 Restart=on-failure
 RestartSec=3
@@ -378,7 +428,7 @@ ExecStart=$HOME/go/bin/0gchaind start \\
   --chaincfg.node-api.enabled \\
   --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
   --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551 \\
-  --pruning=nothing \\
+${CL_PRUNE_FLAG}
   --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656
 Restart=on-failure
 RestartSec=3
@@ -418,9 +468,11 @@ sudo systemctl start ${OG_SERVICE_NAME}
 # Update env vars
 sed -i '/OG_GETH_SERVICE_NAME/d' $HOME/.bash_profile 2>/dev/null || true
 sed -i '/EXEC_CLIENT/d' $HOME/.bash_profile 2>/dev/null || true
+sed -i '/ENABLE_RETH_PRUNE/d' $HOME/.bash_profile 2>/dev/null || true
 {
   echo "export EXEC_CLIENT=\"reth\""
   echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\""
+  echo "export ENABLE_RETH_PRUNE=\"$ENABLE_RETH_PRUNE\""
 } >> $HOME/.bash_profile
 
 echo -e "\n${GREEN}╔══════════════════════════════════════════════════════════╗${RESET}"
@@ -430,6 +482,7 @@ echo -e "\n${YELLOW}Service Status:${RESET}"
 echo -e "  Reth service:      ${OG_RETH_SERVICE_NAME} (${GREEN}enabled${RESET})"
 echo -e "  Consensus service: ${OG_SERVICE_NAME} (${GREEN}enabled${RESET})"
 echo -e "  Old Geth service:  ${OG_GETH_SERVICE_NAME} (${RED}disabled${RESET})"
+echo -e "  Pruning mode:      $([ "$ENABLE_RETH_PRUNE" = "yes" ] && echo "${GREEN}Pruned (CL+EL, distance=10064)${RESET}" || echo "${YELLOW}Archive (no prune)${RESET}")"
 echo -e "\n${YELLOW}Backup location:${RESET} $BACKUP_DIR"
 echo -e "\n${YELLOW}Monitor logs:${RESET}"
 echo -e "  Reth:      sudo journalctl -u ${OG_RETH_SERVICE_NAME} -f -o cat"
