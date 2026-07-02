@@ -101,7 +101,11 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 
 ## 📖 Documentation
 
-For detailed documentation on each script, see the [docs/](docs/) folder.
+For detailed documentation on each script, see the [docs/](docs/) folder:
+
+- [Usage guide](docs/usage.md) - menu navigation, option reference, safety notes.
+- [Validator node guide](docs/validator-node.md) - validator node setup and operational details.
+- [Storage node guide](docs/storage-node.md) - storage node setup and operations.
 
 ## 🔗 Links
 
