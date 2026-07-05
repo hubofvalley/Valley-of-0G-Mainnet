@@ -486,7 +486,7 @@ function delegate_to_validator() {
           esac
         fi
         command -v cast >/dev/null 2>&1 || { echo -e "${RED}Cast still unavailable.${RESET}"; return 1; }
-        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
         [[ -z "$VALIDATOR_ADDR" || "$VALIDATOR_ADDR" == "0x0000000000000000000000000000000000000000" ]] && { echo -e "${RED}Validator not found for the provided PUBKEY.${RESET}"; return 1; }
         ;;
       3|*)
@@ -503,7 +503,7 @@ function delegate_to_validator() {
             esac
           fi
           command -v cast >/dev/null 2>&1 || { echo -e "${RED}Cast still unavailable.${RESET}"; return 1; }
-          VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+          VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
           [[ -z "$VALIDATOR_ADDR" || "$VALIDATOR_ADDR" == "0x0000000000000000000000000000000000000000" ]] && { echo -e "${RED}Validator not found for GV_VALIDATOR_PUBKEY.${RESET}"; return 1; }
         else
           echo -e "${RED}GV_VALIDATOR_ADDR / GV_VALIDATOR_PUBKEY not set.${RESET}"
@@ -626,7 +626,7 @@ function undelegate_from_validator() {
     2)
       read -rp "Validator PUBKEY (0x... 48-byte): " VAL_PUBKEY
       if command -v cast >/dev/null 2>&1; then
-        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
       else
         echo -e "${RED}Resolving from pubkey requires 'cast'.${RESET}"; return 1
       fi
@@ -635,7 +635,7 @@ function undelegate_from_validator() {
       if [ -n "$GV_VALIDATOR_ADDR" ]; then
         VALIDATOR_ADDR="$GV_VALIDATOR_ADDR"
       elif [ -n "$GV_VALIDATOR_PUBKEY" ] && command -v cast >/dev/null 2>&1; then
-        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
       fi
       ;;
   esac
@@ -686,8 +686,8 @@ function undelegate_from_validator() {
       return 1
     fi
 
-    TOTAL_TOKENS=$(cast call "$VALIDATOR_ADDR" 'tokens()(uint256)' --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
-    TOTAL_SHARES=$(cast call "$VALIDATOR_ADDR" 'delegatorShares()(uint256)' --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+    TOTAL_TOKENS=$(cast call "$VALIDATOR_ADDR" 'tokens()(uint256)' --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
+    TOTAL_SHARES=$(cast call "$VALIDATOR_ADDR" 'delegatorShares()(uint256)' --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
 
     if [[ -z "$TOTAL_TOKENS" || "$TOTAL_TOKENS" == "0" || -z "$TOTAL_SHARES" || "$TOTAL_SHARES" == "0" ]]; then
       echo -e "${RED}Pool state invalid (zero tokens or shares).${RESET}"; return 1
@@ -695,7 +695,7 @@ function undelegate_from_validator() {
 
     # getDelegation returns (address, uint). Take the last line as shares.
     mapfile -t _DELEG_OUT < <(cast call "$VALIDATOR_ADDR" 'getDelegation(address)(address,uint256)' "$DELEGATOR_ADDR" --rpc-url "$OG_EVM_RPC")
-    MY_SHARES="${_DELEG_OUT[-1]//[[:space:]]/}"
+    MY_SHARES=$(echo "${_DELEG_OUT[-1]}" | awk '{print $1}' | tr -d '[:space:]')
 
     if [[ -z "$MY_SHARES" || "$MY_SHARES" == "0" ]]; then
       echo -e "${RED}No active delegation found for this address.${RESET}"; return 1
@@ -719,7 +719,7 @@ function undelegate_from_validator() {
 
   # ===== Withdrawal fee (msg.value) =====
   if command -v cast >/dev/null 2>&1; then
-    FEE_GWEI=$(cast call "$VALIDATOR_ADDR" 'withdrawalFeeInGwei()(uint96)' --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+    FEE_GWEI=$(cast call "$VALIDATOR_ADDR" 'withdrawalFeeInGwei()(uint96)' --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
     FEE_WEI=$(cast to-wei "$FEE_GWEI" gwei)
   else
     read -rp "Validator withdrawal fee in Gwei (cannot query without 'cast'): " FEE_GWEI
@@ -800,6 +800,10 @@ function staking_rewards_safe_call() {
   echo "$out" | tail -n1 | awk '{print $1}' | tr -d '[:space:]'
 }
 
+function staking_rewards_first_token() {
+  tail -n1 | awk '{print $1}' | tr -d '[:space:]'
+}
+
 function staking_rewards_display_og() {
   local wei="${1:-}"
 
@@ -815,6 +819,75 @@ function staking_rewards_display_og() {
   else
     echo "$wei wei"
   fi
+}
+
+function staking_rewards_hex_to_dec() {
+  local value="${1:-}"
+
+  value="${value#0x}"
+  [[ "$value" =~ ^[0-9a-fA-F]+$ ]] || return 1
+  echo $((16#$value))
+}
+
+function staking_rewards_block_timestamp() {
+  local block="$1"
+  local raw timestamp
+
+  set +e
+  raw=$(cast block "$block" --json --rpc-url "$OG_EVM_RPC" 2>/dev/null)
+  set -e
+
+  timestamp=$(echo "$raw" | sed -n 's/.*"timestamp":"\([^"]*\)".*/\1/p' | head -n1)
+  [ -n "$timestamp" ] || return 1
+  staking_rewards_hex_to_dec "$timestamp"
+}
+
+function staking_rewards_format_duration() {
+  local seconds="${1:-}"
+  local days hours minutes
+
+  [[ "$seconds" =~ ^[0-9]+$ ]] || { echo "N/A"; return 0; }
+  if [ "$seconds" -le 0 ]; then
+    echo "ready now"
+    return 0
+  fi
+
+  days=$((seconds / 86400))
+  seconds=$((seconds % 86400))
+  hours=$((seconds / 3600))
+  seconds=$((seconds % 3600))
+  minutes=$((seconds / 60))
+  seconds=$((seconds % 60))
+
+  if [ "$days" -gt 0 ]; then
+    printf "%dd %dh %dm" "$days" "$hours" "$minutes"
+  elif [ "$hours" -gt 0 ]; then
+    printf "%dh %dm" "$hours" "$minutes"
+  elif [ "$minutes" -gt 0 ]; then
+    printf "%dm %ds" "$minutes" "$seconds"
+  else
+    printf "%ds" "$seconds"
+  fi
+}
+
+function staking_rewards_block_time_sample() {
+  local current_block="$1"
+  local sample_blocks="${2:-200}"
+  local past_block current_ts past_ts elapsed
+
+  [[ "$current_block" =~ ^[0-9]+$ ]] || return 1
+  if [ "$current_block" -le "$sample_blocks" ]; then
+    sample_blocks=$((current_block - 1))
+  fi
+  [ "$sample_blocks" -gt 0 ] || return 1
+
+  past_block=$((current_block - sample_blocks))
+  current_ts=$(staking_rewards_block_timestamp "$current_block") || return 1
+  past_ts=$(staking_rewards_block_timestamp "$past_block") || return 1
+  elapsed=$((current_ts - past_ts))
+
+  [ "$elapsed" -gt 0 ] || return 1
+  printf "%s %s" "$sample_blocks" "$elapsed"
 }
 
 function staking_rewards_decimal_div() {
@@ -939,14 +1012,14 @@ function manage_staking_rewards() {
       ;;
     2)
       read -rp "Validator PUBKEY (0x... 48-byte): " VAL_PUBKEY
-      VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+      VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
       [[ -z "$VALIDATOR_ADDR" || "$VALIDATOR_ADDR" == "0x0000000000000000000000000000000000000000" ]] && { echo -e "${RED}Validator not found for the provided PUBKEY.${RESET}"; return 1; }
       ;;
     3|*)
       if [ -n "$GV_VALIDATOR_ADDR" ]; then
         VALIDATOR_ADDR="$GV_VALIDATOR_ADDR"
       elif [ -n "$GV_VALIDATOR_PUBKEY" ]; then
-        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | staking_rewards_first_token)
         [[ -z "$VALIDATOR_ADDR" || "$VALIDATOR_ADDR" == "0x0000000000000000000000000000000000000000" ]] && { echo -e "${RED}Validator not found for GV_VALIDATOR_PUBKEY.${RESET}"; return 1; }
       else
         echo -e "${RED}GV_VALIDATOR_ADDR / GV_VALIDATOR_PUBKEY not set.${RESET}"
@@ -1167,14 +1240,25 @@ function manage_staking_rewards() {
         ;;
       6)
         local withdraw_count current_block failed_count failed_amount next_amount display_count i row completion delegator amount status
+        local sample_blocks sample_elapsed avg_block_seconds rate_bps block_time_note blocks_remaining eta_seconds eta_display
         withdraw_count=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'withdrawCount()(uint64)' || echo "0")
         current_block=$(cast block-number --rpc-url "$OG_EVM_RPC" 2>/dev/null || echo "N/A")
         failed_count=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'failedWithdrawCount()(uint256)' || echo "N/A")
         failed_amount=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'failedWithdrawAmount()(uint256)' || echo "N/A")
         next_amount=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'nextWithdrawalAmount()(uint256)' || echo "N/A")
+        block_time_note="N/A"
+
+        if [[ "$current_block" =~ ^[0-9]+$ ]] && command -v cast >/dev/null 2>&1; then
+          if read -r sample_blocks sample_elapsed < <(staking_rewards_block_time_sample "$current_block" 200); then
+            avg_block_seconds=$(awk -v elapsed="$sample_elapsed" -v blocks="$sample_blocks" 'BEGIN { printf "%.2f", elapsed / blocks }')
+            rate_bps=$(awk -v elapsed="$sample_elapsed" -v blocks="$sample_blocks" 'BEGIN { printf "%.3f", blocks / elapsed }')
+            block_time_note="${avg_block_seconds}s/block (${rate_bps} blocks/sec, sampled ${sample_blocks} blocks)"
+          fi
+        fi
 
         echo -e "\n${GREEN}Withdrawal queue status:${RESET}"
         echo "  Current block:          $current_block"
+        echo "  Block time estimate:    $block_time_note"
         echo "  Withdrawal count:       $withdraw_count"
         echo "  Failed withdraw count:  $failed_count"
         echo "  Failed withdraw amount: $(staking_rewards_display_og "$failed_amount") OG"
@@ -1183,24 +1267,44 @@ function manage_staking_rewards() {
         if [[ "$withdraw_count" =~ ^[0-9]+$ ]] && [ "$withdraw_count" -gt 0 ]; then
           display_count="$withdraw_count"
           if [ "$display_count" -gt 20 ]; then display_count=20; fi
-          echo -e "\nindex | completionHeight | status  | delegator | amount OG"
-          echo "------|------------------|---------|-----------|----------"
+          echo -e "\n${CYAN}Withdrawal queue entries:${RESET}"
           for ((i=0; i<display_count; i++)); do
             set +e
             mapfile -t row < <(cast call "$VALIDATOR_ADDR" 'getWithdraw(uint64)(uint256,address,uint256)' "$i" --rpc-url "$OG_EVM_RPC" 2>/dev/null)
             set -e
             if [ "${#row[@]}" -lt 3 ]; then
-              echo "$i | N/A | N/A | N/A | N/A"
+              echo "#$i"
+              echo "  Status:     N/A"
+              echo "  Completion: N/A"
+              echo "  Delegator:  N/A"
+              echo "  Amount:     N/A"
               continue
             fi
             completion=$(echo "${row[0]}" | awk '{print $1}' | tr -d '[:space:]')
             delegator=$(echo "${row[1]}" | awk '{print $1}' | tr -d '[:space:]')
             amount=$(echo "${row[2]}" | awk '{print $1}' | tr -d '[:space:]')
             status="PENDING"
+            blocks_remaining="N/A"
+            eta_display="N/A"
             if [[ "$completion" =~ ^[0-9]+$ && "$current_block" =~ ^[0-9]+$ ]] && [ "$completion" -le "$current_block" ]; then
               status="READY"
+              blocks_remaining="0"
+              eta_display="ready now"
+            elif [[ "$completion" =~ ^[0-9]+$ && "$current_block" =~ ^[0-9]+$ ]]; then
+              blocks_remaining=$((completion - current_block))
+              if [[ "${sample_blocks:-}" =~ ^[0-9]+$ && "${sample_elapsed:-}" =~ ^[0-9]+$ && "$sample_blocks" -gt 0 ]]; then
+                eta_seconds=$(((blocks_remaining * sample_elapsed + sample_blocks - 1) / sample_blocks))
+                eta_display="$(staking_rewards_format_duration "$eta_seconds")"
+              fi
             fi
-            echo "$i | $completion | $status | $delegator | $(staking_rewards_display_og "$amount")"
+
+            echo "#$i"
+            echo "  Status:            $status"
+            echo "  Completion height: $completion"
+            echo "  Blocks remaining:  $blocks_remaining"
+            echo "  Estimated wait:    $eta_display"
+            echo "  Delegator:         $delegator"
+            echo "  Amount:            $(staking_rewards_display_og "$amount") OG"
           done
           if [ "$withdraw_count" -gt 20 ]; then
             echo "Showing first 20 queue entries only."
@@ -1583,7 +1687,8 @@ function ensure_private_key() {
       [ "$mode" = "required" ] && { echo -e "${RED}PRIVATE_KEY is required for this action.${RESET}"; return 1; } || return 0 ;;
   esac
 
-  read -p "Enter private key (0x-prefixed or 64-hex), or path to a .env file: " _input
+  read -rsp "Enter private key (0x-prefixed or 64-hex), or path to a .env file: " _input
+  echo
   if [ -z "$_input" ]; then
     [ "$mode" = "required" ] && { echo -e "${RED}PRIVATE_KEY not provided.${RESET}"; return 1; } || return 0
   fi
@@ -2158,7 +2263,8 @@ function approve_ai_alignment_node() {
         DEFAULT_KEY="$ZG_ALIGNMENT_NODE_SERVICE_PRIVATEKEY"
     fi
 
-    read -p "Enter private key (no 0x). Leave blank to use .env: " INPUT_KEY
+    read -rsp "Enter private key (no 0x). Leave blank to use .env: " INPUT_KEY
+    echo
     if [ -z "$INPUT_KEY" ]; then
         INPUT_KEY="$DEFAULT_KEY"
     fi

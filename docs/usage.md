@@ -87,9 +87,11 @@ Use `1o` to open the 0G Mainnet staking rewards submenu. It can show a validator
 
 Operator commission and tip fees are separate. `withdrawCommission(address)` is operator-only and enters the withdrawal queue, so it is not instant. `withdrawTipFee(address)` is also operator-only, but transfers instantly and does not use the queue.
 
+The withdrawal queue view shows the current block, sampled block time, each entry's completion height, remaining blocks, and an estimated wait time. `PENDING` means the current block is still below `completionHeight`; `READY` means the queue entry can be processed.
+
 ## Safety notes
 
 - `1m` and `1n` are high-risk recovery/migration actions. Test on non-production where possible.
 - In `1o`, never submit operator-only writes unless you are using the validator operator wallet.
 - Any menu item that submits a transaction spends gas and may move funds or stake.
-- Protect validator keys, EVM private keys, and service backups.
+- Protect validator keys, EVM private keys, and service backups. Private key prompts hide typed input, but pasting keys into a terminal still deserves care.
