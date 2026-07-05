@@ -40,6 +40,7 @@ Run it as the user that owns the 0G node files. The script stores environment va
 | 1l. Undelegate from Validator | Starts undelegation. | Reduce or remove stake. | Yes - on-chain transaction. |
 | 1m. Migrate Geth to Reth | Migrates execution client from geth to reth. | Experimental EL migration. | High - experimental service/data change. |
 | 1n. Rollback & Align CL/EL Height | Recovery flow to align consensus/execution height. | Broken CL/EL sync recovery. | High - recovery operation. |
+| 1o. Check & Withdraw Rewards | Opens staking rewards management for delegation value, operator commission, tip fees, and withdrawal queue. | Check validator earnings or submit reward-related validator-contract transactions. | Mixed - dashboard/delegation/queue checks are read-only; withdrawals and queue processing submit transactions. |
 | 2a. Deploy Storage Node | Installs 0G storage node. | Run storage service. | Medium - installs service and data. |
 | 2b. Update Storage Node | Updates storage node binary/service. | Storage node upgrade. | Medium. |
 | 2c. Apply Storage Node Snapshot | Applies storage node snapshot. | Speed up or recover storage sync. | Yes - can replace storage data. |
@@ -78,8 +79,17 @@ Run it as the user that owns the 0G node files. The script stores environment va
 4. Add storage components (`2a`, `3a`, `4a`) only if you intend to operate those services.
 5. Keep backups before any delete, migrate, snapshot, or rollback action.
 
+## Staking rewards management
+
+Use `1o` to open the 0G Mainnet staking rewards submenu. It can show a validator earnings dashboard, estimate a delegator's current delegation value, withdraw operator commission, withdraw operator tip fees, trigger `distributeRewards()`, and inspect or process the withdrawal queue.
+
+0G validator rewards are auto-compounding. Delegators do not claim rewards through a separate claim function; `distributeRewards()` folds pending rewards into the validator pool, which changes the token/share exchange rate. To withdraw only rewards, estimate the excess value above your principal and undelegate that amount.
+
+Operator commission and tip fees are separate. `withdrawCommission(address)` is operator-only and enters the withdrawal queue, so it is not instant. `withdrawTipFee(address)` is also operator-only, but transfers instantly and does not use the queue.
+
 ## Safety notes
 
 - `1m` and `1n` are high-risk recovery/migration actions. Test on non-production where possible.
+- In `1o`, never submit operator-only writes unless you are using the validator operator wallet.
 - Any menu item that submits a transaction spends gas and may move funds or stake.
 - Protect validator keys, EVM private keys, and service backups.

@@ -782,6 +782,478 @@ function undelegate_from_validator() {
     menu
 }
 
+function staking_rewards_safe_call() {
+  local contract="$1"
+  local signature="$2"
+  shift 2
+  local out status
+
+  set +e
+  out=$(cast call "$contract" "$signature" "$@" --rpc-url "$OG_EVM_RPC" 2>/dev/null)
+  status=$?
+  set -e
+
+  if [ $status -ne 0 ] || [ -z "$out" ]; then
+    return 1
+  fi
+
+  echo "$out" | tail -n1 | awk '{print $1}' | tr -d '[:space:]'
+}
+
+function staking_rewards_display_og() {
+  local wei="${1:-}"
+
+  if [[ -z "$wei" || "$wei" == "N/A" || ! "$wei" =~ ^[0-9]+$ ]]; then
+    echo "N/A"
+    return 0
+  fi
+
+  if command -v cast >/dev/null 2>&1; then
+    cast from-wei "$wei" ether 2>/dev/null || echo "N/A"
+  elif command -v bc >/dev/null 2>&1; then
+    echo "scale=18; $wei / 1000000000000000000" | bc
+  else
+    echo "$wei wei"
+  fi
+}
+
+function staking_rewards_decimal_div() {
+  local value="${1:-}"
+  local divisor="${2:-1}"
+  local scale="${3:-4}"
+
+  if [[ -z "$value" || "$value" == "N/A" || ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "N/A"
+    return 0
+  fi
+
+  echo "scale=$scale; $value / $divisor" | bc
+}
+
+function staking_rewards_bigint_lt() {
+  local left="${1:-0}"
+  local right="${2:-0}"
+
+  [[ "$left" =~ ^[0-9]+$ && "$right" =~ ^[0-9]+$ ]] || return 1
+  [ "$(echo "$left < $right" | bc)" = "1" ]
+}
+
+function staking_rewards_extract_tx_hash() {
+  local tx_out="$1"
+  local tx_hash
+
+  tx_hash=$(echo "$tx_out" | sed -n 's/.*"transactionHash"[[:space:]]*:[[:space:]]*"\(0x[0-9a-fA-F]\{64\}\)".*/\1/p' | head -n1)
+  if [ -z "$tx_hash" ]; then
+    tx_hash=$(echo "$tx_out" | sed -n 's/.*transactionHash[[:space:]]*\(0x[0-9a-fA-F]\{64\}\).*/\1/p' | head -n1)
+  fi
+  if [ -z "$tx_hash" ]; then
+    tx_hash=$(echo "$tx_out" | grep -Eo '0x[0-9a-fA-F]{64}' | head -n1)
+  fi
+
+  echo "$tx_hash"
+}
+
+function staking_rewards_pause() {
+  echo -e "\n${YELLOW}Press Enter to return to staking rewards submenu...${RESET}"
+  read -r
+}
+
+function staking_rewards_operator_warning() {
+  local operator_addr="$1"
+  local signer_addr=""
+
+  if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+    set +e
+    signer_addr=$(cast wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || true)
+    set -e
+  fi
+
+  if [ -n "$signer_addr" ] && [ -n "$operator_addr" ] && [ "${signer_addr,,}" != "${operator_addr,,}" ]; then
+    echo -e "${YELLOW}WARNING: PRIVATE_KEY resolves to $signer_addr, but validator operator is $operator_addr.${RESET}"
+    echo -e "${YELLOW}Operator-only transactions will likely revert unless sent by the operator wallet.${RESET}"
+  fi
+}
+
+function staking_rewards_send_no_value() {
+  local validator_addr="$1"
+  local signature="$2"
+  local success_label="$3"
+  shift 3
+  local tx_out tx_hash
+
+  echo -e "${CYAN}Sending transaction via 'cast'...${RESET}"
+  TX_OUT=$(
+    cast send "$validator_addr" \
+      "$signature" "$@" \
+      --rpc-url "$OG_EVM_RPC" \
+      --private-key "$PRIVATE_KEY" 2>&1 | tee /dev/tty
+  )
+  tx_out="$TX_OUT"
+  tx_hash=$(staking_rewards_extract_tx_hash "$tx_out")
+
+  if [ -n "$tx_hash" ]; then
+    echo -e "${GREEN}$success_label submitted. Track on Chainscan:${RESET} https://chainscan.0g.ai/tx/$tx_hash"
+  else
+    echo -e "${YELLOW}$success_label submitted (tx hash not detected). Track contract:${RESET} https://chainscan.0g.ai/address/$validator_addr"
+  fi
+}
+
+function manage_staking_rewards() {
+  set -euo pipefail
+
+  ensure_evm_cli_tools prompt || true
+  ensure_private_key optional || true
+
+  if ! command -v cast >/dev/null 2>&1; then
+    echo -e "${RED}'cast' is required for staking rewards management.${RESET}"
+    echo -e "${YELLOW}Install Foundry, then reopen this menu.${RESET}"
+    read -r
+    menu
+    return
+  fi
+
+  if ! command -v bc >/dev/null 2>&1; then
+    echo -e "${RED}'bc' is required for reward math.${RESET}"
+    read -r
+    menu
+    return
+  fi
+
+  OG_EVM_RPC="${OG_EVM_RPC:-https://evmrpc.0g.ai}"
+  STAKING_ADDRESS="${STAKING_ADDRESS:-0xea224dBB52F57752044c0C86aD50930091F561B9}"
+  GV_VALIDATOR_ADDR="${GV_VALIDATOR_ADDR:-0x108e619dA0cdbA8A301A53948A4aCc23A3d79377}"
+  GV_VALIDATOR_PUBKEY="${GV_VALIDATOR_PUBKEY:-0xb589c0c26210a065a4c4aee068346301490efad5bfaa0578f186c6e41cc4018004f08a411ef0f056468174c260307b7e}"
+
+  echo -e "${CYAN}Staking Rewards Management (0G Mainnet)${RESET}"
+  echo "Select how to specify the validator:"
+  echo "  1) Enter validator contract address (0x...)"
+  echo "  2) Enter validator PUBKEY (48-byte) and resolve via Staking.getValidator(bytes)"
+  echo "  3) Use Grand Valley defaults from ENV (GV_VALIDATOR_ADDR / GV_VALIDATOR_PUBKEY)"
+  read -rp "Choice [1/2/3, b=back]: " MODE
+  if [[ "${MODE,,}" == "b" || "${MODE,,}" == "back" ]]; then menu; return; fi
+
+  VALIDATOR_ADDR=""
+  case "${MODE:-3}" in
+    1)
+      read -rp "Validator contract address (0x...): " VALIDATOR_ADDR
+      ;;
+    2)
+      read -rp "Validator PUBKEY (0x... 48-byte): " VAL_PUBKEY
+      VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$VAL_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+      [[ -z "$VALIDATOR_ADDR" || "$VALIDATOR_ADDR" == "0x0000000000000000000000000000000000000000" ]] && { echo -e "${RED}Validator not found for the provided PUBKEY.${RESET}"; return 1; }
+      ;;
+    3|*)
+      if [ -n "$GV_VALIDATOR_ADDR" ]; then
+        VALIDATOR_ADDR="$GV_VALIDATOR_ADDR"
+      elif [ -n "$GV_VALIDATOR_PUBKEY" ]; then
+        VALIDATOR_ADDR=$(cast call "$STAKING_ADDRESS" 'getValidator(bytes)(address)' "$GV_VALIDATOR_PUBKEY" --rpc-url "$OG_EVM_RPC" | tail -n1 | tr -d '[:space:]')
+        [[ -z "$VALIDATOR_ADDR" || "$VALIDATOR_ADDR" == "0x0000000000000000000000000000000000000000" ]] && { echo -e "${RED}Validator not found for GV_VALIDATOR_PUBKEY.${RESET}"; return 1; }
+      else
+        echo -e "${RED}GV_VALIDATOR_ADDR / GV_VALIDATOR_PUBKEY not set.${RESET}"
+        return 1
+      fi
+      ;;
+  esac
+
+  read -rp "Custom EVM RPC? [Enter to use ${OG_EVM_RPC}, b=back]: " RPC_INPUT
+  if [[ "${RPC_INPUT,,}" == "b" || "${RPC_INPUT,,}" == "back" ]]; then menu; return; fi
+  if [ -n "${RPC_INPUT}" ]; then OG_EVM_RPC="$RPC_INPUT"; fi
+
+  while true; do
+    echo -e "\n${CYAN}Staking Rewards Management (0G Mainnet)${RESET}"
+    echo "Validator: $VALIDATOR_ADDR"
+    echo "RPC:       $OG_EVM_RPC"
+    echo "  1) Validator earnings dashboard (read-only)"
+    echo "  2) My delegation value & estimated rewards (read-only)"
+    echo "  3) Withdraw commission (operator only)"
+    echo "  4) Withdraw tip fees (operator only)"
+    echo "  5) Trigger distributeRewards()"
+    echo "  6) View withdrawal queue status (read-only)"
+    echo "  7) Process withdrawal queue / failed stack"
+    echo "  b) Back to main menu"
+    read -rp "Choice: " REWARD_OPTION
+
+    case "${REWARD_OPTION,,}" in
+      1)
+        local tokens delegator_shares stakes rewards commission tip_fee commission_rate apy operator withdrawal_fee
+        tokens=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'tokens()(uint256)' || echo "N/A")
+        delegator_shares=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'delegatorShares()(uint256)' || echo "N/A")
+        stakes=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'stakes()(uint256)' || echo "N/A")
+        rewards=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'rewards()(uint256)' || echo "N/A")
+        commission=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'commission()(uint256)' || echo "N/A")
+        tip_fee=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'tipFee()(uint256)' || echo "N/A")
+        commission_rate=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'commissionRate()(uint32)' || echo "N/A")
+        apy=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'annualPercentageYield()(uint256)' || echo "N/A")
+        operator=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'operatorAddress()(address)' || echo "N/A")
+        withdrawal_fee=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'withdrawalFeeInGwei()(uint96)' || echo "N/A")
+
+        echo -e "\n${GREEN}Validator earnings dashboard:${RESET}"
+        echo "  Total delegated tokens:        $(staking_rewards_display_og "$tokens") OG"
+        echo "  Total delegator shares:        $delegator_shares"
+        echo "  Actively staked:               $(staking_rewards_display_og "$stakes") OG"
+        echo "  Pending rewards distribution:  $(staking_rewards_display_og "$rewards") OG"
+        echo "  Operator commission:           $(staking_rewards_display_og "$commission") OG"
+        echo "  Tip fees:                      $(staking_rewards_display_og "$tip_fee") OG"
+        echo "  Commission rate:               $(staking_rewards_decimal_div "$commission_rate" 10000 4)%"
+        echo "  Annual percentage yield:       $(staking_rewards_decimal_div "$apy" 100 2)%"
+        echo "  Operator address:              $operator"
+        echo "  Withdrawal fee:                $withdrawal_fee gwei"
+        staking_rewards_pause
+        ;;
+      2)
+        local delegator_addr my_shares current_wei principal_og principal_wei reward_wei reward_og
+        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+          set +e
+          delegator_addr=$(cast wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || true)
+          set -e
+        fi
+        if [ -z "${delegator_addr:-}" ]; then
+          read -rp "Delegator address (0x..., b=back): " delegator_addr
+          if [[ "${delegator_addr,,}" == "b" || "${delegator_addr,,}" == "back" ]]; then continue; fi
+        else
+          read -rp "Delegator address [Enter to use $delegator_addr, b=back]: " _delegator_input
+          if [[ "${_delegator_input,,}" == "b" || "${_delegator_input,,}" == "back" ]]; then continue; fi
+          delegator_addr="${_delegator_input:-$delegator_addr}"
+        fi
+
+        mapfile -t _DELEG_OUT < <(cast call "$VALIDATOR_ADDR" 'getDelegation(address)(address,uint256)' "$delegator_addr" --rpc-url "$OG_EVM_RPC")
+        my_shares=$(echo "${_DELEG_OUT[-1]}" | awk '{print $1}' | tr -d '[:space:]')
+
+        if [[ -z "$my_shares" || "$my_shares" == "0" ]]; then
+          echo -e "${YELLOW}No active delegation found for this address.${RESET}"
+          staking_rewards_pause
+          continue
+        fi
+
+        current_wei=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'convertToTokens(uint256)(uint256)' "$my_shares" || echo "N/A")
+        echo -e "\n${GREEN}Delegation value:${RESET}"
+        echo "  Delegator:      $delegator_addr"
+        echo "  Shares:         $my_shares"
+        echo "  Current value:  $(staking_rewards_display_og "$current_wei") OG"
+        echo "  Note: pending rewards() not yet distributed are excluded until distributeRewards() runs."
+
+        read -rp "Original delegated amount in OG (Enter to skip, b=back): " principal_og
+        if [[ "${principal_og,,}" == "b" || "${principal_og,,}" == "back" ]]; then continue; fi
+        if [ -n "$principal_og" ]; then
+          if [[ ! "$principal_og" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo -e "${RED}Invalid amount. Skipping reward estimate.${RESET}"
+          elif [[ "$current_wei" =~ ^[0-9]+$ ]]; then
+            principal_wei=$(cast to-wei "$principal_og" ether)
+            reward_wei=$(echo "$current_wei - $principal_wei" | bc)
+            if [ "$(echo "$reward_wei > 0" | bc)" = "1" ]; then
+              reward_og=$(staking_rewards_display_og "$reward_wei")
+              echo "  Estimated rewards above principal: $reward_og OG"
+              echo "  To withdraw rewards only, undelegate about $reward_og OG."
+              read -rp "Type 'w' to open undelegate flow, or Enter to stay here: " _jump
+              if [[ "${_jump,,}" == "w" ]]; then
+                undelegate_from_validator
+                return
+              fi
+            else
+              echo "  Estimated rewards above principal: 0 OG (current value is not above principal)."
+            fi
+          fi
+        fi
+        staking_rewards_pause
+        ;;
+      3)
+        local commission_wei operator_addr recipient ok
+        commission_wei=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'commission()(uint256)' || echo "0")
+        echo -e "\n${GREEN}Accrued commission:${RESET} $(staking_rewards_display_og "$commission_wei") OG"
+
+        if staking_rewards_bigint_lt "$commission_wei" "1000000000"; then
+          echo -e "${YELLOW}Commission is below the 1 gwei minimum. Nothing to withdraw yet.${RESET}"
+          staking_rewards_pause
+          continue
+        fi
+
+        operator_addr=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'operatorAddress()(address)' || echo "")
+        staking_rewards_operator_warning "$operator_addr"
+        read -rp "Withdrawal recipient [Enter to use operator $operator_addr, b=back]: " recipient
+        if [[ "${recipient,,}" == "b" || "${recipient,,}" == "back" ]]; then continue; fi
+        recipient="${recipient:-$operator_addr}"
+
+        echo -e "\n${YELLOW}Summary:${RESET}"
+        echo "  Validator:  $VALIDATOR_ADDR"
+        echo "  Recipient:  $recipient"
+        echo "  Commission: $(staking_rewards_display_og "$commission_wei") OG"
+        echo "  RPC:        $OG_EVM_RPC"
+        echo "  Note:       commission withdrawal is queued, not instant."
+        read -rp "Withdraw commission? (y/n, b=back): " ok
+        case "${ok,,}" in
+          y|yes) ;;
+          b|back) continue ;;
+          *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
+        esac
+
+        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+          staking_rewards_send_no_value "$VALIDATOR_ADDR" 'withdrawCommission(address)' "Commission withdrawal" "$recipient"
+          echo -e "${YELLOW}Commission withdrawal is QUEUED, not instant. It enters the withdrawal queue and completes after the network delay period. Check status via sub-option 6; run sub-option 7 if it is ready but unprocessed.${RESET}"
+        else
+          echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
+          echo "  1) Open https://chainscan.0g.ai/address/$VALIDATOR_ADDR"
+          echo "  2) Contract -> Write -> select 'withdrawCommission(address)'"
+          echo "  3) Set withdrawalAddress = $recipient"
+          echo "  4) Connect the operator wallet and submit. No payable value is required."
+          echo "  5) This withdrawal is queued, not instant."
+        fi
+        staking_rewards_pause
+        ;;
+      4)
+        local tip_fee_wei operator_addr recipient ok
+        tip_fee_wei=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'tipFee()(uint256)' || echo "0")
+        echo -e "\n${GREEN}Withdrawable tip fees:${RESET} $(staking_rewards_display_og "$tip_fee_wei") OG"
+
+        if [[ "$tip_fee_wei" == "0" ]]; then
+          echo -e "${YELLOW}No tip fees to withdraw yet.${RESET}"
+          staking_rewards_pause
+          continue
+        fi
+
+        operator_addr=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'operatorAddress()(address)' || echo "")
+        staking_rewards_operator_warning "$operator_addr"
+        read -rp "Withdrawal recipient [Enter to use operator $operator_addr, b=back]: " recipient
+        if [[ "${recipient,,}" == "b" || "${recipient,,}" == "back" ]]; then continue; fi
+        recipient="${recipient:-$operator_addr}"
+
+        echo -e "\n${YELLOW}Summary:${RESET}"
+        echo "  Validator:  $VALIDATOR_ADDR"
+        echo "  Recipient:  $recipient"
+        echo "  Tip fees:   $(staking_rewards_display_og "$tip_fee_wei") OG"
+        echo "  RPC:        $OG_EVM_RPC"
+        echo "  Note:       tip fee withdrawal is instant, not queued."
+        read -rp "Withdraw tip fees? (y/n, b=back): " ok
+        case "${ok,,}" in
+          y|yes) ;;
+          b|back) continue ;;
+          *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
+        esac
+
+        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+          staking_rewards_send_no_value "$VALIDATOR_ADDR" 'withdrawTipFee(address)' "Tip fee withdrawal" "$recipient"
+          echo -e "${GREEN}Tip fee withdrawal is instant and does not enter the withdrawal queue.${RESET}"
+        else
+          echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
+          echo "  1) Open https://chainscan.0g.ai/address/$VALIDATOR_ADDR"
+          echo "  2) Contract -> Write -> select 'withdrawTipFee(address)'"
+          echo "  3) Set withdrawalAddress = $recipient"
+          echo "  4) Connect the operator wallet and submit. No payable value is required."
+          echo "  5) This transfer is instant and is not queued."
+        fi
+        staking_rewards_pause
+        ;;
+      5)
+        local rewards_wei ok
+        rewards_wei=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'rewards()(uint256)' || echo "N/A")
+        echo -e "\n${GREEN}Pending rewards before distribution:${RESET} $(staking_rewards_display_og "$rewards_wei") OG"
+        echo "distributeRewards() folds pending rewards into the pool after community tax and validator commission."
+        echo "Delegators receive rewards through a higher token/share exchange rate."
+        read -rp "Trigger distributeRewards()? (y/n, b=back): " ok
+        case "${ok,,}" in
+          y|yes) ;;
+          b|back) continue ;;
+          *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
+        esac
+
+        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+          staking_rewards_send_no_value "$VALIDATOR_ADDR" 'distributeRewards()' "distributeRewards"
+        else
+          echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
+          echo "  1) Open https://chainscan.0g.ai/address/$VALIDATOR_ADDR"
+          echo "  2) Contract -> Write -> select 'distributeRewards()'"
+          echo "  3) Connect any funded wallet and submit. No payable value is required."
+        fi
+        staking_rewards_pause
+        ;;
+      6)
+        local withdraw_count current_block failed_count failed_amount next_amount display_count i row completion delegator amount status
+        withdraw_count=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'withdrawCount()(uint64)' || echo "0")
+        current_block=$(cast block-number --rpc-url "$OG_EVM_RPC" 2>/dev/null || echo "N/A")
+        failed_count=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'failedWithdrawCount()(uint256)' || echo "N/A")
+        failed_amount=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'failedWithdrawAmount()(uint256)' || echo "N/A")
+        next_amount=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'nextWithdrawalAmount()(uint256)' || echo "N/A")
+
+        echo -e "\n${GREEN}Withdrawal queue status:${RESET}"
+        echo "  Current block:          $current_block"
+        echo "  Withdrawal count:       $withdraw_count"
+        echo "  Failed withdraw count:  $failed_count"
+        echo "  Failed withdraw amount: $(staking_rewards_display_og "$failed_amount") OG"
+        echo "  Next withdrawal amount: $(staking_rewards_display_og "$next_amount") OG"
+
+        if [[ "$withdraw_count" =~ ^[0-9]+$ ]] && [ "$withdraw_count" -gt 0 ]; then
+          display_count="$withdraw_count"
+          if [ "$display_count" -gt 20 ]; then display_count=20; fi
+          echo -e "\nindex | completionHeight | status  | delegator | amount OG"
+          echo "------|------------------|---------|-----------|----------"
+          for ((i=0; i<display_count; i++)); do
+            set +e
+            mapfile -t row < <(cast call "$VALIDATOR_ADDR" 'getWithdraw(uint64)(uint256,address,uint256)' "$i" --rpc-url "$OG_EVM_RPC" 2>/dev/null)
+            set -e
+            if [ "${#row[@]}" -lt 3 ]; then
+              echo "$i | N/A | N/A | N/A | N/A"
+              continue
+            fi
+            completion=$(echo "${row[0]}" | awk '{print $1}' | tr -d '[:space:]')
+            delegator=$(echo "${row[1]}" | awk '{print $1}' | tr -d '[:space:]')
+            amount=$(echo "${row[2]}" | awk '{print $1}' | tr -d '[:space:]')
+            status="PENDING"
+            if [[ "$completion" =~ ^[0-9]+$ && "$current_block" =~ ^[0-9]+$ ]] && [ "$completion" -le "$current_block" ]; then
+              status="READY"
+            fi
+            echo "$i | $completion | $status | $delegator | $(staking_rewards_display_og "$amount")"
+          done
+          if [ "$withdraw_count" -gt 20 ]; then
+            echo "Showing first 20 queue entries only."
+          fi
+        fi
+        staking_rewards_pause
+        ;;
+      7)
+        local ok failed_count
+        echo -e "\n${YELLOW}processWithdrawQueue() is anyone-callable, but still spends gas.${RESET}"
+        read -rp "Process ready withdrawal queue now? (y/n, b=back): " ok
+        case "${ok,,}" in
+          y|yes) ;;
+          b|back) continue ;;
+          *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
+        esac
+
+        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+          staking_rewards_send_no_value "$VALIDATOR_ADDR" 'processWithdrawQueue()' "processWithdrawQueue"
+        else
+          echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
+          echo "  1) Open https://chainscan.0g.ai/address/$VALIDATOR_ADDR"
+          echo "  2) Contract -> Write -> select 'processWithdrawQueue()'"
+          echo "  3) Connect any funded wallet and submit. No payable value is required."
+        fi
+
+        failed_count=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'failedWithdrawCount()(uint256)' || echo "0")
+        if [[ "$failed_count" =~ ^[0-9]+$ ]] && [ "$failed_count" -gt 0 ]; then
+          read -rp "Failed withdraw stack has $failed_count entries. Process failed stack too? (y/n): " ok
+          if [[ "${ok,,}" == "y" || "${ok,,}" == "yes" ]]; then
+            if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+              staking_rewards_send_no_value "$VALIDATOR_ADDR" 'processFailedWithdrawStack()' "processFailedWithdrawStack"
+            else
+              echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
+              echo "  1) Open https://chainscan.0g.ai/address/$VALIDATOR_ADDR"
+              echo "  2) Contract -> Write -> select 'processFailedWithdrawStack()'"
+              echo "  3) Connect any funded wallet and submit. No payable value is required."
+            fi
+          fi
+        fi
+        staking_rewards_pause
+        ;;
+      b|back)
+        menu
+        return
+        ;;
+      *)
+        echo -e "${RED}Invalid option.${RESET}"
+        ;;
+    esac
+  done
+}
+
 function query_balance() {
     echo -e "${CYAN}Select an option:${RESET}"
     echo "1. Query balance of EVM address"
@@ -1044,7 +1516,7 @@ function ensure_evm_cli_tools() {
           _persist_foundry_path
           # Install/update binaries non-interactively
           if [ -x "$foundry_bin/foundryup" ]; then
-            "$foundry_bin/foundryup" -y || true
+            "$foundry_bin/foundryup" || true
           fi
           # Re-activate (in case PATH changed)
           _activate_foundry_in_session
@@ -1781,6 +2253,7 @@ function show_guidelines() {
     echo "   k. Delegate to Validator: Delegate OG to a validator."
     echo "   l. Undelegate from Validator: Undelegate previously delegated OG."
     echo "   m. Migrate Geth to Reth: Migrates your database from Geth to Reth."
+    echo "   o. Check & Withdraw Rewards: Delegation value, commission, tip fees, and withdrawal queue."
 
     echo -e "${GREEN}Storage Node Options:${RESET}"
     echo "   a. Deploy Storage Node: Sets up a new storage node."
@@ -1854,6 +2327,7 @@ function menu() {
     echo "    l. Undelegate from Validator"
     echo "    m. Migrate Geth to Reth (Experimental)"
     echo "    n. Rollback & Align CL/EL Height (Recovery)"
+    echo "    o. Check & Withdraw Rewards (Delegation / Commission / Tip Fees)"
     echo -e "${GREEN}2. Storage Node${RESET}"
     echo "    a. Deploy Storage Node"
     echo "    b. Update Storage Node"
@@ -1898,8 +2372,8 @@ function menu() {
     echo -e "${GREEN}Let's Buidl 0G Together - Grand Valley${RESET}"
     read -p "Choose an option (e.g., 1a or 1 then a): " OPTION
 
-    # Accept combined selections up to 9 and sub-letters up to 'l' (for Node Management extended sub-options)
-    if [[ $OPTION =~ ^[1-9][a-n]$ ]]; then
+    # Accept combined selections up to 9 and sub-letters up to 'o' (for Validator Node rewards option)
+    if [[ $OPTION =~ ^[1-9][a-o]$ ]]; then
         MAIN_OPTION=${OPTION:0:1}
         SUB_OPTION=${OPTION:1:1}
     else
@@ -1927,6 +2401,7 @@ function menu() {
                 l) undelegate_from_validator ;;
                 m) migrate_geth_to_reth ;;
                 n) rollback_align_height ;;
+                o) manage_staking_rewards ;;
                 *) echo "Invalid sub-option. Please try again." ;;
             esac
             ;;
