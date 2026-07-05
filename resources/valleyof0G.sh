@@ -701,13 +701,17 @@ function undelegate_from_validator() {
       echo -e "${RED}No active delegation found for this address.${RESET}"; return 1
     fi
 
-    AMOUNT_WEI=$(cast to-wei "$AMOUNT_OG" ether)
+    AMOUNT_WEI=$(cast to-wei "$AMOUNT_OG" ether | staking_rewards_first_token)
+    if [[ -z "$AMOUNT_WEI" || ! "$AMOUNT_WEI" =~ ^[0-9]+$ ]]; then
+      echo -e "${RED}Failed to convert amount to wei.${RESET}"; return 1
+    fi
+
     # sharesNeeded = ceil(amountWei * totalShares / totalTokens)
     SHARES=$(echo "($AMOUNT_WEI * $TOTAL_SHARES + $TOTAL_TOKENS - 1) / $TOTAL_TOKENS" | bc)
-    if [[ -z "$SHARES" || "$SHARES" -le 0 ]]; then
+    if staking_rewards_uint_lte_zero "$SHARES"; then
       echo -e "${RED}Computed shares <= 0. Choose a larger amount.${RESET}"; return 1
     fi
-    if (( SHARES > MY_SHARES )); then
+    if staking_rewards_uint_gt "$SHARES" "$MY_SHARES"; then
       echo -e "${RED}Computed shares exceed your current shares ($MY_SHARES). Lower the amount.${RESET}"; return 1
     fi
   fi
@@ -802,6 +806,27 @@ function staking_rewards_safe_call() {
 
 function staking_rewards_first_token() {
   tail -n1 | awk '{print $1}' | tr -d '[:space:]'
+}
+
+function staking_rewards_uint_lte_zero() {
+  local value="${1:-}"
+
+  if [[ -z "$value" || ! "$value" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+
+  [[ "$(echo "$value <= 0" | bc)" == "1" ]]
+}
+
+function staking_rewards_uint_gt() {
+  local left="${1:-}"
+  local right="${2:-}"
+
+  if [[ ! "$left" =~ ^[0-9]+$ || ! "$right" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+
+  [[ "$(echo "$left > $right" | bc)" == "1" ]]
 }
 
 function staking_rewards_display_og() {
