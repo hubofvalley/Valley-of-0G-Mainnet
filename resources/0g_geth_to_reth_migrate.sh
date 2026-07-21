@@ -19,14 +19,45 @@ echo -e "${YELLOW}3. Geth chain data will be exported and imported into Reth${RE
 echo -e "${YELLOW}4. This process may take hours depending on chain height and disk speed${RESET}"
 echo -e "${YELLOW}5. Use tmux/screen session to prevent interruption${RESET}"
 
-read -p $'\n\e[33mDo you want to proceed with migration? (yes/no): \e[0m' confirm
-if [[ "${confirm,,}" != "yes" ]]; then
-    echo -e "${RED}Migration cancelled.${RESET}"
+select_import_mode() {
+    if [ -n "${IMPORT_GETH_DATA+x}" ]; then
+        case "${IMPORT_GETH_DATA,,}" in
+            y|yes) IMPORT_GETH_DATA="yes" ;;
+            n|no) IMPORT_GETH_DATA="no" ;;
+            *) echo "Error: IMPORT_GETH_DATA must be y, yes, n, or no (case-insensitive)." >&2; return 1 ;;
+        esac
+    else
+        while true; do
+            read -r -p "Import existing Geth data into Reth? (y/n) [default: y]: " import_geth_answer
+            case "${import_geth_answer,,}" in
+                ""|y|yes) IMPORT_GETH_DATA="yes"; break ;;
+                n|no) IMPORT_GETH_DATA="no"; break ;;
+                *) echo "Please enter y or n." ;;
+            esac
+        done
+    fi
+}
+
+select_import_mode
+SELECTED_IMPORT_GETH_DATA="$IMPORT_GETH_DATA"
+
+# Used by the focused test harness to exercise selection without touching files.
+if [ "${MIGRATION_MODE_SELECTION_ONLY:-0}" = "1" ]; then
+    printf '%s\n' "$IMPORT_GETH_DATA"
     exit 0
+fi
+
+if [ "$IMPORT_GETH_DATA" = "yes" ]; then
+    read -r -p $'\n\e[33mDo you want to proceed with migration? (yes/no): \e[0m' confirm
+    if [[ "${confirm,,}" != "yes" ]]; then
+        echo -e "${RED}Migration cancelled.${RESET}"
+        exit 0
+    fi
 fi
 
 # Load env
 source $HOME/.bash_profile 2>/dev/null || true
+IMPORT_GETH_DATA="$SELECTED_IMPORT_GETH_DATA"
 
 # Detect port prefix
 if [ -z "${OG_PORT:-}" ]; then
@@ -75,6 +106,7 @@ echo ""
 
 
 # ==== STEP 1: Stop services & backup ====
+if [ "$IMPORT_GETH_DATA" = "yes" ]; then
 echo -e "${CYAN}[Step 1/7] Stopping services and creating backup...${RESET}"
 sudo systemctl stop ${OG_SERVICE_NAME} 2>/dev/null || true
 sudo systemctl stop ${OG_GETH_SERVICE_NAME} 2>/dev/null || true
@@ -90,6 +122,7 @@ if [[ "${DO_BACKUP,,}" == "y" || "${DO_BACKUP,,}" == "yes" ]]; then
     echo -e "${GREEN}Consensus data backed up to: $BACKUP_DIR${RESET}"
 else
     echo -e "${YELLOW}Skipping consensus data backup.${RESET}"
+fi
 fi
 
 # ==== STEP 2: Download Aristotle v1.0.6 & copy binaries ====
@@ -116,19 +149,107 @@ else
     fi
 fi
 
-# Copy binaries
-sudo chmod +x $HOME/aristotle-used/bin/reth $HOME/aristotle-used/bin/0gchaind 2>/dev/null || true
+# Copy binaries. Preparation mode does not alter the consensus binary.
+sudo chmod +x $HOME/aristotle-used/bin/reth 2>/dev/null || true
 cp $HOME/aristotle-used/bin/reth $HOME/go/bin/0g-reth
-cp $HOME/aristotle-used/bin/0gchaind $HOME/go/bin/0gchaind
+if [ "$IMPORT_GETH_DATA" = "yes" ]; then
+    sudo chmod +x $HOME/aristotle-used/bin/0gchaind 2>/dev/null || true
+    cp $HOME/aristotle-used/bin/0gchaind $HOME/go/bin/0gchaind
+fi
 
-# Reth data dir
-mkdir -p $HOME/.0gchaind/0g-home/reth-home
+# Reth data dir (the preparation-only path creates this after temporary init)
+if [ "$IMPORT_GETH_DATA" = "yes" ]; then
+    mkdir -p "$HOME/.0gchaind/0g-home/reth-home"
+fi
 
-# Copy JWT, Genesis, and KZG files
-cp -f $HOME/aristotle-used/jwt.hex $HOME/.0gchaind/jwt.hex 2>/dev/null || true
-cp -f $HOME/aristotle-used/geth-genesis.json $HOME/.0gchaind/geth-genesis.json 2>/dev/null || true
-cp -f $HOME/aristotle-used/kzg-trusted-setup.json $HOME/.0gchaind/0g-home/ 2>/dev/null || true
+# Copy JWT, Genesis, and KZG files for a real migration.
+if [ "$IMPORT_GETH_DATA" = "yes" ]; then
+    if [ ! -e "$HOME/.0gchaind/jwt.hex" ]; then
+        cp "$HOME/aristotle-used/jwt.hex" "$HOME/.0gchaind/jwt.hex" 2>/dev/null || true
+    fi
+    cp -f $HOME/aristotle-used/geth-genesis.json $HOME/.0gchaind/geth-genesis.json 2>/dev/null || true
+    cp -f $HOME/aristotle-used/kzg-trusted-setup.json $HOME/.0gchaind/0g-home/ 2>/dev/null || true
+fi
 echo -e "${GREEN}Reth binary and config files ready.${RESET}"
+
+if [ "$IMPORT_GETH_DATA" = "no" ]; then
+    STAGING_DIR="${RETH_MIGRATION_STAGING_DIR:-$HOME/.0gchaind/reth-migration-staging}"
+    GENESIS_JSON="$STAGING_DIR/geth-genesis.json"
+    RETH_HOME="$HOME/.0gchaind/0g-home/reth-home"
+    TEMP_RETH_HOME=$(mktemp -d)
+    trap 'rm -rf "$TEMP_RETH_HOME"' EXIT
+    mkdir -p "$STAGING_DIR"
+    cp -f "$HOME/aristotle-used/geth-genesis.json" "$GENESIS_JSON"
+    cp -f "$HOME/aristotle-used/kzg-trusted-setup.json" "$STAGING_DIR/kzg-trusted-setup.json"
+    "$HOME/go/bin/0g-reth" init --chain "$GENESIS_JSON" --datadir "$TEMP_RETH_HOME"
+    if [ -f "$TEMP_RETH_HOME/reth.toml" ]; then
+        cp "$TEMP_RETH_HOME/reth.toml" "$STAGING_DIR/reth.toml"
+    fi
+    if [ "$ENABLE_RETH_PRUNE" = "yes" ] && [ -f "$STAGING_DIR/reth.toml" ]; then
+        sed -i '/^\[prune\.segments\.receipts_log_filter\]/i \
+[prune.segments]\n\
+sender_recovery = { distance = 10064 }\n\
+transaction_lookup = { distance = 10064 }\n\
+receipts = { distance = 10064 }\n\
+account_history = { distance = 10064 }\n\
+storage_history = { distance = 10064 }\n' "$STAGING_DIR/reth.toml"
+    fi
+
+    EXTERNAL_IP=$(curl -4 -s ifconfig.me || true)
+    EXTERNAL_IP=${EXTERNAL_IP:-YOUR_EXTERNAL_IP}
+    RETH_CONFIG_FLAG=""
+    if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
+        RETH_CONFIG_FLAG="--config $STAGING_DIR/reth.toml \\\\"
+    fi
+    cat > "$STAGING_DIR/${OG_RETH_SERVICE_NAME}.service.draft" <<EOF
+[Unit]
+Description=0G Reth Execution Client - ${OG_RETH_SERVICE_NAME}
+After=network-online.target
+
+[Service]
+User=$USER
+Type=simple
+WorkingDirectory=$HOME/.0gchaind
+ExecStart=$HOME/go/bin/0g-reth node \\
+  --chain $GENESIS_JSON \\
+  ${RETH_CONFIG_FLAG}
+  --http \\
+  --http.addr 0.0.0.0 \\
+  --http.port ${OG_PORT}545 \\
+  --http.api eth,net,web3,txpool \\
+  --authrpc.addr 0.0.0.0 \\
+  --authrpc.port ${OG_PORT}551 \\
+  --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
+  --datadir $RETH_HOME \\
+  --ipcpath $RETH_HOME/eth-engine.ipc \\
+  --engine.persistence-threshold 0 \\
+  --engine.memory-block-buffer-target 0 \\
+  --bootnodes="enode://2bf74c837a98c94ad0fa8f5c58a428237d2040f9269fe622c3dbe4fef68141c28e2097d7af6ebaa041194257543dc112514238361a6498f9a38f70fd56493f96@8.221.140.134:30303" \\
+  --port ${OG_PORT}303 \\
+  --nat extip:${EXTERNAL_IP}
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    cat > "$STAGING_DIR/consensus-engine-url-change.txt" <<EOF
+Inactive intended change only; it has not been applied:
+Set the consensus Engine RPC URL to http://localhost:${OG_PORT}551 after the Reth database is populated and verified.
+
+Draft Reth unit: $STAGING_DIR/${OG_RETH_SERVICE_NAME}.service.draft
+Generated Reth config: $STAGING_DIR/reth.toml
+Cleanup is explicit: remove $STAGING_DIR manually if these preparation files are no longer wanted.
+EOF
+    echo "Geth import skipped."
+    echo "Reth database has not been populated."
+    echo "Apply or restore the Reth database manually, then verify it before starting Reth and the consensus service."
+    echo "The existing Geth datadir and service have been retained for rollback."
+    exit 0
+fi
 
 # ==== STEP 3: Export Geth data to RLP ====
 echo -e "${CYAN}[Step 3/7] Exporting Geth chain data to RLP...${RESET}"
@@ -505,6 +626,3 @@ echo -e "  rm -f $HOME/.0gchaind/0g-home/trim_export.py"
 
 echo -e "\n${YELLOW}Press Enter to return to menu...${RESET}"
 read -r
-
-
-
