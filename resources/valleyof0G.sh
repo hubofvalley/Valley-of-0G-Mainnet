@@ -2432,10 +2432,10 @@ function show_guidelines() {
 
 # Menu function
 function menu() {
-    realtime_block_height=$(curl -s -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n" 2>/dev/null)
+    realtime_block_height=$(curl -s --connect-timeout 3 --max-time 10 -X POST "https://evmrpc.0g.ai" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n" 2>/dev/null || true)
     [ -z "$realtime_block_height" ] && realtime_block_height="N/A"
     local_rpc_port=$(grep -oP 'laddr = "tcp://(0.0.0.0|127.0.0.1):\K[0-9]+57' "$HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml" 2>/dev/null || echo "26657")
-    local_node_height=$(curl -s "http://127.0.0.1:$local_rpc_port/status" 2>/dev/null | jq -r '.result.sync_info.latest_block_height // empty' 2>/dev/null)
+    local_node_height=$(curl -s --connect-timeout 1 --max-time 3 "http://127.0.0.1:$local_rpc_port/status" 2>/dev/null | jq -r '.result.sync_info.latest_block_height // empty' 2>/dev/null || true)
     [ -z "$local_node_height" ] && local_node_height="N/A (node not running)"
     block_difference="N/A"
     if [[ "$realtime_block_height" =~ ^[0-9]+$ && "$local_node_height" =~ ^[0-9]+$ ]]; then
