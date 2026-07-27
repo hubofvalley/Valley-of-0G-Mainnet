@@ -81,17 +81,19 @@ Run it as the user that owns the 0G node files. The script stores environment va
 
 ## Staking rewards management
 
-Use `1o` to open the 0G Mainnet staking rewards submenu. It can show a validator earnings dashboard, estimate a delegator's current delegation value, withdraw operator commission, withdraw operator tip fees, trigger `distributeRewards()`, and inspect or process the withdrawal queue.
+Use `1o` to open the 0G Mainnet staking rewards submenu. It can show a validator earnings dashboard, estimate a delegator's current delegation value, withdraw operator commission, withdraw operator tip fees, trigger `distributeRewards()`, inspect or process the withdrawal queue, and change the validator commission rate.
 
 0G validator rewards are auto-compounding. Delegators do not claim rewards through a separate claim function; `distributeRewards()` folds pending rewards into the validator pool, which changes the token/share exchange rate. To withdraw only rewards, estimate the excess value above your principal and undelegate that amount.
 
 Operator commission and tip fees are separate. `withdrawCommission(address)` is operator-only and enters the withdrawal queue, so it is not instant. `withdrawTipFee(address)` is also operator-only, but transfers instantly and does not use the queue.
+
+`setCommissionRate(uint32)` is operator-only. The contract uses parts per million (ppm): `10000` is 1%, `50000` is 5%, and `1000000` is 100%. The submenu accepts a percentage with up to four decimal places, shows the current and proposed values, and asks for explicit confirmation before submission. The validator contract rejects values above the protocol maximum.
 
 The withdrawal queue view shows the current block, sampled block time, each entry's completion height, remaining blocks, and an estimated wait time. `PENDING` means the current block is still below `completionHeight`; `READY` means the queue entry can be processed.
 
 ## Safety notes
 
 - `1m` and `1n` are high-risk recovery/migration actions. Test on non-production where possible.
-- In `1o`, never submit operator-only writes unless you are using the validator operator wallet.
+- In `1o`, never submit operator-only writes, including commission-rate changes, unless you are using the validator operator wallet.
 - Any menu item that submits a transaction spends gas and may move funds or stake.
 - Protect validator keys, EVM private keys, and service backups. Private key prompts hide typed input, but pasting keys into a terminal still deserves care.

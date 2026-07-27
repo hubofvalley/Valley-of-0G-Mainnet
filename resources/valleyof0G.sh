@@ -309,8 +309,7 @@ function create_validator() {
 
     read -p "Commission rate in % (e.g., 5 for 5%): " COMM_PCT
     COMM_PCT=${COMM_PCT:-5}
-    COMM_BPS=$(awk 'BEGIN{printf "%d", ('"${COMM_PCT:-0}"')*10000}')
-    if ! awk 'BEGIN{exit !('"${COMM_PCT:-0}"'>=0 && '"${COMM_PCT:-0}"'<=100)}'; then
+    if ! COMM_PPM=$(staking_rewards_percent_to_ppm "${COMM_PCT:-0}"); then
         echo -e "${RED}Invalid commission (0–100).${RESET}"; menu; return 1
     fi
 
@@ -322,7 +321,7 @@ function create_validator() {
 
     echo -e "\n${YELLOW}Summary:${RESET}"
     echo "  Moniker:            $OG_MONIKER"
-    echo "  Commission (bps):   $COMM_BPS  (~${COMM_PCT}%)"
+    echo "  Commission (ppm):   $COMM_PPM  (${COMM_PCT}%)"
     echo "  Withdrawal fee:     ${WITHDRAW_GWEI} Gwei"
     echo "  EVM RPC:            $OG_EVM_RPC"
     echo "  Staking Contract:   $STAKING_ADDRESS"
@@ -377,7 +376,7 @@ function create_validator() {
         cast send "$STAKING_ADDRESS" \
             'createAndInitializeValidatorIfNecessary((string,string,string,string,string),uint32,uint96,bytes,bytes)' \
             "$DESC_TUPLE" \
-            "$COMM_BPS" \
+            "$COMM_PPM" \
             "$WITHDRAW_GWEI" \
             "$PUBKEY" \
             "$SIGNATURE" \
@@ -400,7 +399,7 @@ function create_validator() {
                   cast send "$STAKING_ADDRESS" \
                     'createAndInitializeValidatorIfNecessary((string,string,string,string,string),uint32,uint96,bytes,bytes)' \
                     "$DESC_TUPLE" \
-                    "$COMM_BPS" \
+                    "$COMM_PPM" \
                     "$WITHDRAW_GWEI" \
                     "$PUBKEY" \
                     "$SIGNATURE" \
@@ -423,7 +422,7 @@ function create_validator() {
         echo "     - description.website         = $WEBSITE"
         echo "     - description.securityContact = $EMAIL"
         echo "     - description.details         = $DETAILS"
-        echo "     - commissionRate (bps)        = $COMM_BPS"
+        echo "     - commissionRate (ppm)        = $COMM_PPM"
         echo "     - withdrawalFeeInGwei         = $WITHDRAW_GWEI"
         echo "     - pubkey                      = $PUBKEY"
         echo "     - signature                   = $SIGNATURE"
@@ -956,6 +955,26 @@ function staking_rewards_pause() {
   read -r
 }
 
+function staking_rewards_percent_to_ppm() {
+  local percent="$1"
+  local whole fraction
+
+  if [[ ! "$percent" =~ ^([0-9]{1,2}([.][0-9]{1,4})?|100([.]0{1,4})?)$ ]]; then
+    return 1
+  fi
+
+  whole="${percent%%.*}"
+  if [[ "$percent" == *.* ]]; then
+    fraction="${percent#*.}"
+  else
+    fraction=""
+  fi
+  fraction="${fraction}0000"
+  fraction="${fraction:0:4}"
+
+  printf '%d\n' "$((10#$whole * 10000 + 10#$fraction))"
+}
+
 function staking_rewards_operator_warning() {
   local operator_addr="$1"
   local signer_addr=""
@@ -1068,6 +1087,7 @@ function manage_staking_rewards() {
     echo "  5) Trigger distributeRewards()"
     echo "  6) View withdrawal queue status (read-only)"
     echo "  7) Process withdrawal queue / failed stack"
+    echo "  8) Change validator commission rate (operator only)"
     echo "  b) Back to main menu"
     read -rp "Choice: " REWARD_OPTION
 
@@ -1369,6 +1389,59 @@ function manage_staking_rewards() {
               echo "  3) Connect any funded wallet and submit. No payable value is required."
             fi
           fi
+        fi
+        staking_rewards_pause
+        ;;
+      8)
+        local current_rate_ppm new_rate_percent new_rate_ppm operator_addr ok
+        current_rate_ppm=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'commissionRate()(uint32)' || echo "N/A")
+        operator_addr=$(staking_rewards_safe_call "$VALIDATOR_ADDR" 'operatorAddress()(address)' || echo "N/A")
+
+        if [[ ! "$current_rate_ppm" =~ ^[0-9]+$ ]]; then
+          echo -e "${RED}Could not read the current commission rate. No transaction was prepared.${RESET}"
+          staking_rewards_pause
+          continue
+        fi
+
+        echo -e "\n${GREEN}Current validator commission:${RESET}"
+        echo "  Rate:     $(staking_rewards_decimal_div "$current_rate_ppm" 10000 4)% ($current_rate_ppm ppm)"
+        echo "  Operator: $operator_addr"
+        read -rp "New commission rate in % (0-100, up to 4 decimals; b=back): " new_rate_percent
+        if [[ "${new_rate_percent,,}" == "b" || "${new_rate_percent,,}" == "back" ]]; then continue; fi
+        if ! new_rate_ppm=$(staking_rewards_percent_to_ppm "$new_rate_percent"); then
+          echo -e "${RED}Invalid commission rate. Enter 0-100 with no more than 4 decimal places.${RESET}"
+          staking_rewards_pause
+          continue
+        fi
+        if [ "$new_rate_ppm" -eq "$current_rate_ppm" ]; then
+          echo -e "${YELLOW}New commission rate matches the current rate. Nothing to change.${RESET}"
+          staking_rewards_pause
+          continue
+        fi
+
+        staking_rewards_operator_warning "$operator_addr"
+        echo -e "\n${YELLOW}Commission rate change summary:${RESET}"
+        echo "  Validator: $VALIDATOR_ADDR"
+        echo "  Operator:  $operator_addr"
+        echo "  Current:   $(staking_rewards_decimal_div "$current_rate_ppm" 10000 4)% ($current_rate_ppm ppm)"
+        echo "  New:       $(staking_rewards_decimal_div "$new_rate_ppm" 10000 4)% ($new_rate_ppm ppm)"
+        echo "  RPC:       $OG_EVM_RPC"
+        echo "  Note:      the validator contract enforces the protocol maximum."
+        read -rp "Submit commission rate change? (y/n, b=back): " ok
+        case "${ok,,}" in
+          y|yes) ;;
+          b|back) continue ;;
+          *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
+        esac
+
+        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+          staking_rewards_send_no_value "$VALIDATOR_ADDR" 'setCommissionRate(uint32)' "Commission rate change" "$new_rate_ppm"
+        else
+          echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
+          echo "  1) Open https://chainscan.0g.ai/address/$VALIDATOR_ADDR"
+          echo "  2) Contract -> Write -> select 'setCommissionRate(uint32)'"
+          echo "  3) Set commissionRate_ = $new_rate_ppm (ppm, equal to ${new_rate_percent}%)"
+          echo "  4) Connect the validator operator wallet and submit. No payable value is required."
         fi
         staking_rewards_pause
         ;;
