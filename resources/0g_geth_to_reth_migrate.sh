@@ -56,7 +56,7 @@ if [ "$IMPORT_GETH_DATA" = "yes" ]; then
 fi
 
 # Load env
-source $HOME/.bash_profile 2>/dev/null || true
+source "$HOME/.bash_profile" 2>/dev/null || true
 IMPORT_GETH_DATA="$SELECTED_IMPORT_GETH_DATA"
 
 # Detect port prefix
@@ -118,7 +118,7 @@ DO_BACKUP=${DO_BACKUP:-yes}
 if [[ "${DO_BACKUP,,}" == "y" || "${DO_BACKUP,,}" == "yes" ]]; then
     BACKUP_DIR="$HOME/.0gchaind/backup-$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$BACKUP_DIR"
-    cp -r $HOME/.0gchaind/0g-home/0gchaind-home "$BACKUP_DIR/0gchaind-home"
+    cp -r "$HOME/.0gchaind/0g-home/0gchaind-home" "$BACKUP_DIR/0gchaind-home"
     echo -e "${GREEN}Consensus data backed up to: $BACKUP_DIR${RESET}"
 else
     echo -e "${YELLOW}Skipping consensus data backup.${RESET}"
@@ -127,11 +127,11 @@ fi
 
 # ==== STEP 2: Download Aristotle v1.0.6 & copy binaries ====
 echo -e "${CYAN}[Step 2/7] Downloading Aristotle v1.0.6 and preparing Reth binary...${RESET}"
-cd $HOME
+cd "$HOME"
 if [ ! -f "$HOME/aristotle/bin/reth" ] && [ ! -f "$HOME/go/bin/0g-reth" ]; then
     wget -q -O aristotle.tar.gz https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz
     rm -rf aristotle-used
-    tar -xzvf aristotle.tar.gz -C $HOME
+    tar -xzvf aristotle.tar.gz -C "$HOME"
     # Handle both possible extracted dir names
     if [ -d "Aristotle-v1.0.6" ]; then
         mv Aristotle-v1.0.6 aristotle-used
@@ -145,16 +145,16 @@ if [ ! -f "$HOME/aristotle/bin/reth" ] && [ ! -f "$HOME/go/bin/0g-reth" ]; then
 else
     # Use existing aristotle directory
     if [ -d "$HOME/aristotle" ] && [ ! -d "$HOME/aristotle-used" ]; then
-        cp -r $HOME/aristotle $HOME/aristotle-used
+        cp -r "$HOME/aristotle" "$HOME/aristotle-used"
     fi
 fi
 
 # Copy binaries. Preparation mode does not alter the consensus binary.
-sudo chmod +x $HOME/aristotle-used/bin/reth 2>/dev/null || true
-cp $HOME/aristotle-used/bin/reth $HOME/go/bin/0g-reth
+sudo chmod +x "$HOME/aristotle-used/bin/reth" 2>/dev/null || true
+cp "$HOME/aristotle-used/bin/reth" "$HOME/go/bin/0g-reth"
 if [ "$IMPORT_GETH_DATA" = "yes" ]; then
-    sudo chmod +x $HOME/aristotle-used/bin/0gchaind 2>/dev/null || true
-    cp $HOME/aristotle-used/bin/0gchaind $HOME/go/bin/0gchaind
+    sudo chmod +x "$HOME/aristotle-used/bin/0gchaind" 2>/dev/null || true
+    cp "$HOME/aristotle-used/bin/0gchaind" "$HOME/go/bin/0gchaind"
 fi
 
 # Reth data dir (the preparation-only path creates this after temporary init)
@@ -167,8 +167,8 @@ if [ "$IMPORT_GETH_DATA" = "yes" ]; then
     if [ ! -e "$HOME/.0gchaind/jwt.hex" ]; then
         cp "$HOME/aristotle-used/jwt.hex" "$HOME/.0gchaind/jwt.hex" 2>/dev/null || true
     fi
-    cp -f $HOME/aristotle-used/geth-genesis.json $HOME/.0gchaind/geth-genesis.json 2>/dev/null || true
-    cp -f $HOME/aristotle-used/kzg-trusted-setup.json $HOME/.0gchaind/0g-home/ 2>/dev/null || true
+    cp -f "$HOME/aristotle-used/geth-genesis.json" "$HOME/.0gchaind/geth-genesis.json" 2>/dev/null || true
+    cp -f "$HOME/aristotle-used/kzg-trusted-setup.json" "$HOME/.0gchaind/0g-home/" 2>/dev/null || true
 fi
 echo -e "${GREEN}Reth binary and config files ready.${RESET}"
 
@@ -186,33 +186,42 @@ if [ "$IMPORT_GETH_DATA" = "no" ]; then
         cp "$TEMP_RETH_HOME/reth.toml" "$STAGING_DIR/reth.toml"
     fi
     if [ "$ENABLE_RETH_PRUNE" = "yes" ] && [ -f "$STAGING_DIR/reth.toml" ]; then
-        sed -i '/^\[prune\.segments\.receipts_log_filter\]/i \
+        if grep -q '^\[prune\.segments\.receipts_log_filter\]' "$STAGING_DIR/reth.toml"; then
+            sed -i '/^\[prune\.segments\.receipts_log_filter\]/i \
 [prune.segments]\n\
 sender_recovery = { distance = 10064 }\n\
 transaction_lookup = { distance = 10064 }\n\
 receipts = { distance = 10064 }\n\
 account_history = { distance = 10064 }\n\
 storage_history = { distance = 10064 }\n' "$STAGING_DIR/reth.toml"
+        else
+            cat >> "$STAGING_DIR/reth.toml" <<'PRUNEEOF'
+
+[prune]
+block_interval = 5
+
+[prune.segments]
+sender_recovery = { distance = 10064 }
+transaction_lookup = { distance = 10064 }
+receipts = { distance = 10064 }
+account_history = { distance = 10064 }
+storage_history = { distance = 10064 }
+
+[prune.segments.receipts_log_filter]
+PRUNEEOF
+            echo -e "${YELLOW}Warning: [prune.segments.receipts_log_filter] not found in reth.toml, appended full prune config.${RESET}"
+        fi
     fi
 
     EXTERNAL_IP=$(curl -4 -s ifconfig.me || true)
     EXTERNAL_IP=${EXTERNAL_IP:-YOUR_EXTERNAL_IP}
-    RETH_CONFIG_FLAG=""
+    RETH_EXEC_CMD="$HOME/go/bin/0g-reth node \\
+  --chain $GENESIS_JSON"
     if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        RETH_CONFIG_FLAG="--config $STAGING_DIR/reth.toml \\"
+        RETH_EXEC_CMD="$RETH_EXEC_CMD \\
+  --config $STAGING_DIR/reth.toml"
     fi
-    cat > "$STAGING_DIR/${OG_RETH_SERVICE_NAME}.service.draft" <<EOF
-[Unit]
-Description=0G Reth Execution Client - ${OG_RETH_SERVICE_NAME}
-After=network-online.target
-
-[Service]
-User=$USER
-Type=simple
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0g-reth node \\
-  --chain $GENESIS_JSON \\
-  ${RETH_CONFIG_FLAG}
+    RETH_EXEC_CMD="$RETH_EXEC_CMD \\
   --http \\
   --http.addr 0.0.0.0 \\
   --http.port ${OG_PORT}545 \\
@@ -226,7 +235,17 @@ ExecStart=$HOME/go/bin/0g-reth node \\
   --engine.memory-block-buffer-target 0 \\
   --bootnodes="enode://2bf74c837a98c94ad0fa8f5c58a428237d2040f9269fe622c3dbe4fef68141c28e2097d7af6ebaa041194257543dc112514238361a6498f9a38f70fd56493f96@8.221.140.134:30303" \\
   --port ${OG_PORT}303 \\
-  --nat extip:${EXTERNAL_IP}
+  --nat extip:${EXTERNAL_IP}"
+    cat > "$STAGING_DIR/${OG_RETH_SERVICE_NAME}.service.draft" <<EOF
+[Unit]
+Description=0G Reth Execution Client - ${OG_RETH_SERVICE_NAME}
+After=network-online.target
+
+[Service]
+User=$USER
+Type=simple
+WorkingDirectory=$HOME/.0gchaind
+ExecStart=${RETH_EXEC_CMD}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
@@ -276,8 +295,8 @@ else
 fi
 
 $GETH_BIN export \
-  --datadir $HOME/.0gchaind/0g-home/geth-home \
-  $HOME/.0gchaind/0g-home/chain-export.rlp
+  --datadir "$HOME/.0gchaind/0g-home/geth-home" \
+  "$HOME/.0gchaind/0g-home/chain-export.rlp"
 
 echo -e "${GREEN}Geth data exported successfully.${RESET}"
 
@@ -291,9 +310,9 @@ if [ ! -f "$GENESIS_JSON" ]; then
     echo -e "${YELLOW}Ensure geth-genesis.json is in your .0gchaind directory.${RESET}"
     exit 1
 fi
-$HOME/go/bin/0g-reth init \
-  --chain $GENESIS_JSON \
-  --datadir $HOME/.0gchaind/0g-home/reth-home
+"$HOME/go/bin/0g-reth" init \
+  --chain "$GENESIS_JSON" \
+  --datadir "$HOME/.0gchaind/0g-home/reth-home"
 
 # Inject prune segments into existing reth.toml (generated by reth init)
 if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
@@ -301,13 +320,32 @@ if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
     echo -e "${CYAN}Configuring Reth pruning in reth.toml...${RESET}"
     if [ -f "$RETH_TOML" ]; then
         # Insert [prune.segments] before [prune.segments.receipts_log_filter]
-        sed -i '/^\[prune\.segments\.receipts_log_filter\]/i \
+        if grep -q '^\[prune\.segments\.receipts_log_filter\]' "$RETH_TOML"; then
+            sed -i '/^\[prune\.segments\.receipts_log_filter\]/i \
 [prune.segments]\n\
 sender_recovery = { distance = 10064 }\n\
 transaction_lookup = { distance = 10064 }\n\
 receipts = { distance = 10064 }\n\
 account_history = { distance = 10064 }\n\
 storage_history = { distance = 10064 }\n' "$RETH_TOML"
+        else
+            # Pattern not found, append prune config
+            cat >> "$RETH_TOML" <<'PRUNEEOF'
+
+[prune]
+block_interval = 5
+
+[prune.segments]
+sender_recovery = { distance = 10064 }
+transaction_lookup = { distance = 10064 }
+receipts = { distance = 10064 }
+account_history = { distance = 10064 }
+storage_history = { distance = 10064 }
+
+[prune.segments.receipts_log_filter]
+PRUNEEOF
+            echo -e "${YELLOW}Warning: [prune.segments.receipts_log_filter] not found in reth.toml, appended full prune config.${RESET}"
+        fi
     else
         # Fallback: create minimal reth.toml if init didn't generate one
         cat > "$RETH_TOML" << 'RETHEOF'
@@ -410,7 +448,7 @@ print(f"Done. Skipped {skipped}, wrote {block_count} blocks to {output_file}")
 PYEOF
 
 # Run trim
-python3 $HOME/.0gchaind/0g-home/trim_export.py $HOME/.0gchaind/0g-home/chain-export.rlp 1
+python3 "$HOME/.0gchaind/0g-home/trim_export.py" "$HOME/.0gchaind/0g-home/chain-export.rlp" 1
 echo -e "${GREEN}Genesis block trimmed from RLP export.${RESET}"
 
 # ==== STEP 5: Import RLP into Reth ====
@@ -445,36 +483,24 @@ echo -e "${GREEN}Reth import completed successfully!${RESET}"
 # ==== STEP 6: Update config & create service files ====
 echo -e "${CYAN}[Step 6/7] Updating configuration and creating service files...${RESET}"
 
-EXTERNAL_IP=$(curl -4 -s ifconfig.me)
+EXTERNAL_IP=$(curl -4 -s ifconfig.me || true)
 
 # Update app.toml engine connection
 sed -i "s|^rpc-dial-url *=.*|rpc-dial-url = \"http://localhost:${OG_PORT}551\"|" \
-  $HOME/.0gchaind/0g-home/0gchaind-home/config/app.toml
+  "$HOME/.0gchaind/0g-home/0gchaind-home/config/app.toml"
 
 # Disable old Geth service
 sudo systemctl disable ${OG_GETH_SERVICE_NAME} 2>/dev/null || true
 sudo rm -f /etc/systemd/system/${OG_GETH_SERVICE_NAME}.service 2>/dev/null || true
 
-# Build Reth config flag
-if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-    RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\"
-else
-    RETH_CONFIG_FLAG=""
-fi
-
 # Create Reth service
-sudo tee /etc/systemd/system/${OG_RETH_SERVICE_NAME}.service > /dev/null <<EOF
-[Unit]
-Description=0G Reth Execution Client - ${OG_RETH_SERVICE_NAME}
-After=network-online.target
-
-[Service]
-User=$USER
-Type=simple
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0g-reth node \\
-  --chain $GENESIS_JSON \\
-  ${RETH_CONFIG_FLAG}
+RETH_EXEC_CMD="$HOME/go/bin/0g-reth node \\
+  --chain $GENESIS_JSON"
+if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
+    RETH_EXEC_CMD="$RETH_EXEC_CMD \\
+  --config $HOME/.0gchaind/0g-home/reth-home/reth.toml"
+fi
+RETH_EXEC_CMD="$RETH_EXEC_CMD \\
   --http \\
   --http.addr 0.0.0.0 \\
   --http.port ${OG_PORT}545 \\
@@ -488,7 +514,17 @@ ExecStart=$HOME/go/bin/0g-reth node \\
   --engine.memory-block-buffer-target 0 \\
   --bootnodes="enode://2bf74c837a98c94ad0fa8f5c58a428237d2040f9269fe622c3dbe4fef68141c28e2097d7af6ebaa041194257543dc112514238361a6498f9a38f70fd56493f96@8.221.140.134:30303" \\
   --port ${OG_PORT}303 \\
-  --nat extip:${EXTERNAL_IP}
+  --nat extip:${EXTERNAL_IP}"
+sudo tee /etc/systemd/system/${OG_RETH_SERVICE_NAME}.service > /dev/null <<EOF
+[Unit]
+Description=0G Reth Execution Client - ${OG_RETH_SERVICE_NAME}
+After=network-online.target
+
+[Service]
+User=$USER
+Type=simple
+WorkingDirectory=$HOME/.0gchaind
+ExecStart=${RETH_EXEC_CMD}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
@@ -499,27 +535,14 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# Determine CL pruning flag based on user choice
-if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-    CL_PRUNE_FLAG=""
-else
-    CL_PRUNE_FLAG="  --pruning=nothing \\"
-fi
-
 # Update consensus service file
-if [ "${NODE_TYPE:-}" = "validator" ] && [ -n "${ETH_RPC_URL:-}" ]; then
-sudo tee /etc/systemd/system/${OG_SERVICE_NAME}.service > /dev/null <<EOF
-[Unit]
-Description=0gchaind Node Service - ${OG_SERVICE_NAME} (Validator + Reth)
-After=network-online.target
-
-[Service]
-User=$USER
-Environment=CHAIN_SPEC=mainnet
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0gchaind start \\
+# Build CL ExecStart command with conditional pruning flag
+CL_EXEC_CMD_BASE="$HOME/go/bin/0gchaind start \\
   --rpc.laddr tcp://127.0.0.1:${OG_PORT}657 \\
-  --chaincfg.chain-spec mainnet \\
+  --chaincfg.chain-spec mainnet"
+
+if [ "${NODE_TYPE:-}" = "validator" ] && [ -n "${ETH_RPC_URL:-}" ]; then
+CL_EXEC_CMD="${CL_EXEC_CMD_BASE} \\
   --chaincfg.restaking.enabled \\
   --chaincfg.restaking.symbiotic-rpc-dial-url ${ETH_RPC_URL} \\
   --chaincfg.restaking.symbiotic-get-logs-block-range ${BLOCK_NUM:-1} \\
@@ -529,9 +552,23 @@ ExecStart=$HOME/go/bin/0gchaind start \\
   --chaincfg.block-store-service.enabled \\
   --chaincfg.node-api.enabled \\
   --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
-  --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551 \\
-${CL_PRUNE_FLAG}
-  --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656
+  --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551"
+if [ "$ENABLE_RETH_PRUNE" != "yes" ]; then
+    CL_EXEC_CMD="$CL_EXEC_CMD \\
+  --pruning=nothing"
+fi
+CL_EXEC_CMD="$CL_EXEC_CMD \\
+  --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656"
+sudo tee /etc/systemd/system/${OG_SERVICE_NAME}.service > /dev/null <<EOF
+[Unit]
+Description=0gchaind Node Service - ${OG_SERVICE_NAME} (Validator + Reth)
+After=network-online.target
+
+[Service]
+User=$USER
+Environment=CHAIN_SPEC=mainnet
+WorkingDirectory=$HOME/.0gchaind
+ExecStart=${CL_EXEC_CMD}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
@@ -542,6 +579,20 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 else
+CL_EXEC_CMD="${CL_EXEC_CMD_BASE} \\
+  --home $HOME/.0gchaind/0g-home/0gchaind-home \\
+  --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/0g-home/kzg-trusted-setup.json \\
+  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/jwt.hex \\
+  --chaincfg.block-store-service.enabled \\
+  --chaincfg.node-api.enabled \\
+  --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
+  --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551"
+if [ "$ENABLE_RETH_PRUNE" != "yes" ]; then
+    CL_EXEC_CMD="$CL_EXEC_CMD \\
+  --pruning=nothing"
+fi
+CL_EXEC_CMD="$CL_EXEC_CMD \\
+  --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656"
 sudo tee /etc/systemd/system/${OG_SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
 Description=0gchaind Node Service - ${OG_SERVICE_NAME} (RPC + Reth)
@@ -551,18 +602,7 @@ After=network-online.target
 User=$USER
 Environment=CHAIN_SPEC=mainnet
 WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0gchaind start \\
-  --rpc.laddr tcp://127.0.0.1:${OG_PORT}657 \\
-  --chaincfg.chain-spec mainnet \\
-  --home $HOME/.0gchaind/0g-home/0gchaind-home \\
-  --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/0g-home/kzg-trusted-setup.json \\
-  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/jwt.hex \\
-  --chaincfg.block-store-service.enabled \\
-  --chaincfg.node-api.enabled \\
-  --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
-  --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551 \\
-${CL_PRUNE_FLAG}
-  --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656
+ExecStart=${CL_EXEC_CMD}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
@@ -599,14 +639,14 @@ done
 sudo systemctl start ${OG_SERVICE_NAME}
 
 # Update env vars
-sed -i '/OG_GETH_SERVICE_NAME/d' $HOME/.bash_profile 2>/dev/null || true
-sed -i '/EXEC_CLIENT/d' $HOME/.bash_profile 2>/dev/null || true
-sed -i '/ENABLE_RETH_PRUNE/d' $HOME/.bash_profile 2>/dev/null || true
+sed -i '/OG_GETH_SERVICE_NAME/d' "$HOME/.bash_profile" 2>/dev/null || true
+sed -i '/EXEC_CLIENT/d' "$HOME/.bash_profile" 2>/dev/null || true
+sed -i '/ENABLE_RETH_PRUNE/d' "$HOME/.bash_profile" 2>/dev/null || true
 {
   echo "export EXEC_CLIENT=\"reth\""
   echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\""
   echo "export ENABLE_RETH_PRUNE=\"$ENABLE_RETH_PRUNE\""
-} >> $HOME/.bash_profile
+} >> "$HOME/.bash_profile"
 
 echo -e "\n${GREEN}╔══════════════════════════════════════════════════════════╗${RESET}"
 echo -e "${GREEN}║  Migration from Geth to Reth completed successfully!    ║${RESET}"
