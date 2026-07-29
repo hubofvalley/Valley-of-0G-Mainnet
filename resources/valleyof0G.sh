@@ -127,8 +127,8 @@ Grand Valley 0G public endpoints:${RESET}
 - cosmos rest-api: ${BLUE}https://lightnode-api-mainnet-0g.grandvalleys.com${RESET}
 - cosmos ws: ${BLUE}wss://lightnode-rpc-mainnet-0g.grandvalleys.com/websocket${RESET}
 - evm ws: ${BLUE}wss://lightnode-wss-mainnet-0g.grandvalleys.com${RESET}
-- peer: ${BLUE}c27d9181c99091aa2fe2dbc3f28148cdce534f22@peer-mainnet-0g.grandvalleys.com:37656${RESET}
-- endode: ${BLUE}enode://c79ca76c97446ed4509db37a1297f4697e49941dda42bbe46cd1651edfc41a5acdf3e97c42dbe42f52be6a5684266f3e2918cb8630b22e39c13c194846501f7f@enode-mainnet-0g.grandvalleys.com:28303${RESET}
+- peer: ${BLUE}813aeda202eae52b0d3e389a0e6e3a0354ad547a@peer-mainnet-0g.grandvalleys.com:28656${RESET}
+- enode: ${BLUE}enode://4e600c6ad1e7c7c4ca92c4b1750bba35912551aee16d5eb58fdd8f8b1720cb930fb4903ca54b3df45d92bd4c88bd4583d739a4471b76975c1d09ea56ce5fd8b0@enode-mainnet-0g.grandvalleys.com:28303${RESET}
 
 ${GREEN}Grand Valley 0G Mainnet validator profile links:${RESET}
     - ${ORANGE}https://explorer.0g.ai/mainnet/validators/0x108e619da0cdba8a301a53948a4acc23a3d79377/delegators${RESET}
@@ -2046,7 +2046,7 @@ function add_peers() {
             echo "Grand Valley's peers: $peers"
             read -p "Do you want to proceed? (yes/no): " confirm
             if [[ $confirm == "yes" ]]; then
-                sed -i -e "s|^persistent_peers *=.*|persistent_peers = \"813aeda202eae52b0d3e389a0e6e3a0354ad547a@peer-mainnet-0g.grandvalleys.com:37656,$peers\"|" $HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml
+                sed -i -e "s|^persistent_peers *=.*|persistent_peers = \"813aeda202eae52b0d3e389a0e6e3a0354ad547a@peer-mainnet-0g.grandvalleys.com:28656,$peers\"|" $HOME/.0gchaind/0g-home/0gchaind-home/config/config.toml
                 echo "Grand Valley's peers added."
             else
                 echo "Operation cancelled. Returning to menu."

@@ -219,7 +219,8 @@ PRUNEEOF
   --chain $GENESIS_JSON"
     if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
         RETH_EXEC_CMD="$RETH_EXEC_CMD \\
-  --config $STAGING_DIR/reth.toml"
+  --config $STAGING_DIR/reth.toml \\
+  --full"
     fi
     RETH_EXEC_CMD="$RETH_EXEC_CMD \\
   --http \\
@@ -498,7 +499,8 @@ RETH_EXEC_CMD="$HOME/go/bin/0g-reth node \\
   --chain $GENESIS_JSON"
 if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
     RETH_EXEC_CMD="$RETH_EXEC_CMD \\
-  --config $HOME/.0gchaind/0g-home/reth-home/reth.toml"
+  --config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\
+  --full"
 fi
 RETH_EXEC_CMD="$RETH_EXEC_CMD \\
   --http \\

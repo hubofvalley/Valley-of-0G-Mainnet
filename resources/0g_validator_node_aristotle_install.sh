@@ -394,11 +394,12 @@ WantedBy=multi-user.target
 EOF
     EL_SERVICE_NAME="$OG_GETH_SERVICE_NAME"
 else
-    # Build Reth config flag
+    # Build Reth pruning flags
     if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\"
+        RETH_PRUNE_FLAGS="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\
+  --full \\"
     else
-        RETH_CONFIG_FLAG=""
+        RETH_PRUNE_FLAGS=""
     fi
 
     # Reth service file
@@ -413,7 +414,7 @@ Type=simple
 WorkingDirectory=$HOME/.0gchaind
 ExecStart=$HOME/go/bin/0g-reth node \\
   --chain $HOME/.0gchaind/geth-genesis.json \\
-  ${RETH_CONFIG_FLAG}
+  ${RETH_PRUNE_FLAGS}
   --http \\
   --http.addr 0.0.0.0 \\
   --http.port ${OG_PORT}545 \\
