@@ -199,7 +199,7 @@ storage_history = { distance = 10064 }\n' "$STAGING_DIR/reth.toml"
     EXTERNAL_IP=${EXTERNAL_IP:-YOUR_EXTERNAL_IP}
     RETH_CONFIG_FLAG=""
     if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        RETH_CONFIG_FLAG="--config $STAGING_DIR/reth.toml \\\\"
+        RETH_CONFIG_FLAG="--config $STAGING_DIR/reth.toml \\"
     fi
     cat > "$STAGING_DIR/${OG_RETH_SERVICE_NAME}.service.draft" <<EOF
 [Unit]
@@ -457,7 +457,7 @@ sudo rm -f /etc/systemd/system/${OG_GETH_SERVICE_NAME}.service 2>/dev/null || tr
 
 # Build Reth config flag
 if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-    RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\\\"
+    RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\"
 else
     RETH_CONFIG_FLAG=""
 fi
@@ -503,7 +503,7 @@ EOF
 if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
     CL_PRUNE_FLAG=""
 else
-    CL_PRUNE_FLAG="  --pruning=nothing \\\\"
+    CL_PRUNE_FLAG="  --pruning=nothing \\"
 fi
 
 # Update consensus service file

@@ -281,14 +281,14 @@ fi
 if [ "$EXEC_CLIENT" = "reth" ]; then
     if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
         # Pruned mode: CL uses custom pruning (from app.toml settings)
-        EXTRA_CL_FLAGS="--chaincfg.block-store-service.enabled \\\\
-  --chaincfg.node-api.enabled \\\\
+        EXTRA_CL_FLAGS="--chaincfg.block-store-service.enabled \\
+  --chaincfg.node-api.enabled \\
   --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500"
     else
         # Archive mode: CL keeps everything
-        EXTRA_CL_FLAGS="--chaincfg.block-store-service.enabled \\\\
-  --chaincfg.node-api.enabled \\\\
-  --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\\\
+        EXTRA_CL_FLAGS="--chaincfg.block-store-service.enabled \\
+  --chaincfg.node-api.enabled \\
+  --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
   --pruning=nothing"
     fi
 else
@@ -396,7 +396,7 @@ EOF
 else
     # Build Reth config flag
     if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\\\"
+        RETH_CONFIG_FLAG="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\"
     else
         RETH_CONFIG_FLAG=""
     fi
