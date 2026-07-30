@@ -33,7 +33,7 @@ Valley of 0G Mainnet is an open-source project by **Grand Valley** that provides
 | CPU | 8 cores |
 | RAM | 64+ GB |
 | Storage | 1+ TB NVMe SSD |
-| Bandwidth | 100 MBps |
+| Bandwidth | 100 Mbps |
 
 ### Storage Node
 | Category | Requirements |
@@ -41,7 +41,7 @@ Valley of 0G Mainnet is an open-source project by **Grand Valley** that provides
 | CPU | 8+ cores |
 | RAM | 32+ GB |
 | Storage | 500GB - 1TB NVMe SSD |
-| Bandwidth | 100 MBps |
+| Bandwidth | 100 Mbps |
 
 ### Storage KV
 | Category | Requirements |
@@ -72,12 +72,20 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | [`0g_storage_kv_update.sh`](resources/0g_storage_kv_update.sh) | Update storage KV node |
 | [`apply_snapshot.sh`](resources/apply_snapshot.sh) | Apply chain snapshot |
 | [`0g_node_schedule.sh`](resources/0g_node_schedule.sh) | Schedule node start/stop jobs |
+| [`0g_ai_alignment_node_install.sh`](resources/0g_ai_alignment_node_install.sh) | Install an AI Alignment Node |
+| [`0g_geth_to_reth_migrate.sh`](resources/0g_geth_to_reth_migrate.sh) | Migrate the execution client from Geth to Reth |
+| [`0g_rollback_align.sh`](resources/0g_rollback_align.sh) | Roll back and realign consensus/execution clients |
+| [`0g_standard_zgs_node_snapshot.sh`](resources/0g_standard_zgs_node_snapshot.sh) | Apply a Standard ZGS snapshot |
+| [`0g_turbo_zgs_node_snapshot.sh`](resources/0g_turbo_zgs_node_snapshot.sh) | Apply a Turbo ZGS snapshot |
+| [`cosmovisor_migration.sh`](resources/cosmovisor_migration.sh) | Migrate the validator service to Cosmovisor |
 
 ## 🔧 Current Versions
 
 | Component | Version |
 |-----------|---------|
-| Validator Node (0gchaind) | v1.0.4 |
+| Validator bundle (Aristotle) | v1.0.6 |
+| 0gchaind | e8e1071 |
+| Geth / Reth | 1.15.11 / 1.8.1 |
 | Storage Node | v1.1.0 |
 | Storage KV | v1.4.0 |
 | Chain | 0gchain-16661 (Aristotle) |
@@ -94,10 +102,11 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 
 ## 🔐 Privacy & Security
 
-- **No external data storage** - All operations run locally
-- **No phishing links** - All URLs are for legitimate 0G operations
-- **Open source** - Full audit trail available
-- Please verify script integrity before running
+- Scripts execute locally and may install packages, create services, or modify node data.
+- Treat private keys, validator keys, and JWT files as secrets. Never paste them into issues or logs.
+- Review script changes before running updates, especially snapshot, migration, rollback, and deletion operations.
+- Back up validator keys and configuration before destructive maintenance.
+- Versions and verification status are tracked in [`VERSIONS.json`](VERSIONS.json).
 
 ## 📖 Documentation
 
@@ -106,6 +115,11 @@ For detailed documentation on each script, see the [docs/](docs/) folder:
 - [Usage guide](docs/usage.md) - menu navigation, option reference, safety notes.
 - [Validator node guide](docs/validator-node.md) - validator node setup and operational details.
 - [Storage node guide](docs/storage-node.md) - storage node setup and operations.
+- [Storage KV guide](docs/storage-kv.md) - Storage KV setup and maintenance.
+- [Snapshot guide](docs/snapshots.md) - validator and storage snapshot safety.
+- [Scheduler guide](docs/scheduler.md) - scheduled service operations.
+- [Cosmovisor guide](docs/cosmovisor.md) - automatic consensus upgrades.
+- [AI Alignment Node guide](docs/ai-alignment-node.md) - installation and service operations.
 
 ## 🔗 Links
 
@@ -122,3 +136,5 @@ Email: letsbuidltogether@grandvalleys.com
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+last updated by: John

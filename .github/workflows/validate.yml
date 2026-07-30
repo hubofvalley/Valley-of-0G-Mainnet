@@ -37,6 +37,10 @@ jobs:
         run: |
           git ls-files -z '*.json' | xargs -0 -r -n1 jq empty
 
+      - name: Check documentation links and versions
+        shell: bash
+        run: bash tests/test_docs_consistency.sh
+
       - name: Run repository tests
         shell: bash
         run: |

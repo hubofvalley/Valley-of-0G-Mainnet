@@ -1,30 +1,60 @@
 # Snapshot Guide
 
-Speed up node synchronization using snapshots.
+Snapshots replace node database state to reduce sync time. Treat every snapshot operation as destructive maintenance.
 
-## Overview
+## Before You Start
 
-Snapshots allow you to quickly sync your node by downloading a pre-synced database state instead of syncing from genesis.
+1. Confirm the snapshot matches mainnet and the selected component.
+2. Check the published height, age, source, and checksum when available.
+3. Ensure free space for the compressed archive, extracted data, and rollback copy.
+4. Record the current service status, binary version, config, and local height.
+5. Back up keys and configuration separately from node data.
+6. Test the procedure on a non-validator or staging node first.
 
-## How to Apply Snapshots
+Never replace validator keys, node keys, JWT files, or configuration with files from a public snapshot.
 
-1. Launch Valley of 0G:
-   ```bash
-   bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
-   ```
+## Launch
 
-2. Navigate to your node type and select the snapshot option:
-   - **Validator Node**: Select **"Validator Node"** → **"Apply Snapshot"**
-   - **Storage Node**: Select **"Storage Node"** → **"Apply Snapshot"** (choose Standard or Turbo)
+```bash
+bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
+```
 
-## Important Notes
+- **Validator:** select **Validator Node** → **Apply Snapshot**.
+- **Storage:** select **Storage Node** → **Apply Snapshot**, then choose Standard or Turbo to match the node configuration.
 
-- **Stop services** before applying snapshots
-- **Backup** your current data if needed
-- Snapshots may be several hours behind tip
-- Verify snapshot source integrity
+## Verification
+
+After extraction:
+
+1. Confirm ownership and permissions match the service user.
+2. Start only the services required for that node.
+3. Inspect the first 100 log lines after startup.
+4. Verify local height advances toward the network tip.
+5. Keep the rollback copy until the node is stable.
+
+```bash
+sudo systemctl status 0gchaind
+sudo journalctl -u 0gchaind -n 100 --no-pager
+curl -s http://127.0.0.1:26657/status | jq '.result.sync_info'
+```
+
+For Storage nodes, replace the service checks with `zgs` and verify its JSON-RPC status.
+
+## Failure Recovery
+
+If download, extraction, or startup fails:
+
+1. Stop the affected service.
+2. Preserve the failed logs and snapshot metadata.
+3. Move the failed database aside; do not overwrite the rollback copy.
+4. Restore the previous database and configuration.
+5. Start the service and verify its original health before retrying.
+
+Do not repeatedly apply snapshots until the actual failure—space, checksum, archive, permissions, version, or configuration—is identified.
 
 ## Related Documentation
 
 - [Validator Node Guide](validator-node.md)
 - [Storage Node Guide](storage-node.md)
+
+last updated by: John

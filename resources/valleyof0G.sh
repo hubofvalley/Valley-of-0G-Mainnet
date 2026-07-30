@@ -66,7 +66,7 @@ ${YELLOW}| Category  | Requirements                   |
 | CPU       | 8 cores                        |
 | RAM       | 64+ GB                         |
 | Storage   | 1+ TB NVMe SSD                 |
-| Bandwidth | 100 MBps for Download / Upload |${RESET}
+| Bandwidth | 100 Mbps for Download / Upload |${RESET}
 
 validator node current binaries version: ${CYAN}v1.0.6${RESET}
 - consensus client service file name: ${CYAN}\${OG_SERVICE_NAME}.service${RESET}
@@ -81,7 +81,7 @@ ${YELLOW}| Category  | Requirements                   |
 | CPU       | 8+ cores                       |
 | RAM       | 32+ GB                         |
 | Storage   | 500GB / 1TB NVMe SSD           |
-| Bandwidth | 100 MBps for Download / Upload |${RESET}
+| Bandwidth | 100 Mbps for Download / Upload |${RESET}
 
 storage node current binary version: ${CYAN}v1.1.0${RESET}
 
@@ -2440,11 +2440,11 @@ function show_guidelines() {
 
     echo -e "${GREEN}5. Additional Tips${RESET}"
     echo "   - Always backup your wallets and important data before performing operations like deleting nodes."
-    echo "   - Regularly update your nodes to the latest version (currently v1.0.4) to ensure compatibility and security."
+    echo "   - Regularly update your nodes to the version tracked in VERSIONS.json to ensure compatibility and security."
 
     echo -e "${GREEN}6. Option Descriptions and Guides${RESET}"
     echo -e "${GREEN}Validator Node Options:${RESET}"
-    echo "   a. Deploy/re-Deploy Validator Node: Install/reinstall validator stack (v1.0.4)."
+    echo "   a. Deploy/re-Deploy Validator Node: Install/reinstall the validator bundle tracked in VERSIONS.json."
     echo "   b. Manage Validator Node: Update version or perform maintenance."
     echo "   c. Apply Validator Node Snapshot: Speed up sync using official snapshot."
     echo "   d. Add Peers: Add peers (manual or Grand Valley preset)."
@@ -2494,7 +2494,7 @@ function show_guidelines() {
     echo "   l. Delete AI Alignment Node"
  
     echo -e "${GREEN}Utilities:${RESET}"
-    echo "   6. Install 0gchain App: Installs CLI (v1.0.4) for transactions without running a node."
+    echo "   6. Install 0gchain App: Installs the tracked CLI for transactions without running a node."
     echo "   7. Show Endpoints: Displays Grand Valley's public endpoints."
     echo "   8. Show Guidelines: Displays this help information."
  
@@ -2561,7 +2561,7 @@ function menu() {
     echo "    k. Delete Storage KV"
     echo "    l. Delete AI Alignment Node"
     echo "    m. Schedule Stop/Restart Validator Node"
-    echo -e "${GREEN}6. Install the 0gchain App (v1.0.4) only to execute transactions without running a node${RESET}"
+    echo -e "${GREEN}6. Install the tracked 0gchain App only to execute transactions without running a node${RESET}"
     echo -e "${GREEN}7. Show Grand Valley's Endpoints${RESET}"
     echo -e "${YELLOW}8. Show Guidelines${RESET}"
     echo -e "${RED}9. Exit${RESET}"
