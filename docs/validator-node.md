@@ -33,6 +33,19 @@ The current bundle and shipped component versions are recorded in [`../VERSIONS.
 
 Never run Geth and Reth against the same node data at the same time.
 
+## Endpoint exposure
+
+New Reth deployments bind HTTP RPC, Engine API, CometBFT pprof, and Prometheus
+to `127.0.0.1` by default. This keeps the Engine JWT endpoint and profiling
+data off the public network. During a Reth deployment, answer `yes` to
+**Expose Reth HTTP RPC, pprof and Prometheus publicly?** only for an intentional public-RPC host with firewall or
+reverse-proxy controls. This changes HTTP RPC (and the monitoring listeners)
+to `0.0.0.0`; the Reth Engine API remains loopback-only.
+
+For the Geth-to-Reth migration helper, use `EXPOSE_PUBLIC_RPC=yes bash
+resources/0g_geth_to_reth_migrate.sh` for the same explicit HTTP-RPC opt-in.
+Otherwise it stays loopback-only.
+
 ## Default Ports
 
 | Port | Purpose |

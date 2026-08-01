@@ -67,6 +67,24 @@ fi
 read -p "Do you want to enable the indexer? (yes/no): " ENABLE_INDEXER
 read -p "Configure UFW firewall rules for 0G? (y/n): " SETUP_UFW
 
+# HTTP RPC can be useful for a public RPC node, but the Engine API and
+# monitoring endpoints must not be exposed accidentally. Keep all of these
+# local by default. Only a Reth deployment offers the explicit public opt-in.
+EXPOSE_PUBLIC_RPC=no
+RETH_HTTP_ADDR="127.0.0.1"
+MONITORING_ADDR="127.0.0.1"
+if [ "$EXEC_CLIENT" = "reth" ]; then
+  read -p "Expose Reth HTTP RPC, pprof and Prometheus publicly? (yes/no) [default: no]: " EXPOSE_PUBLIC_RPC
+  EXPOSE_PUBLIC_RPC=${EXPOSE_PUBLIC_RPC:-no}
+  case "${EXPOSE_PUBLIC_RPC,,}" in
+    yes|y) RETH_HTTP_ADDR="0.0.0.0" ; MONITORING_ADDR="0.0.0.0" ;;
+    no|n)  ;;
+    *) echo "Please answer yes or no."; exit 1 ;;
+  esac
+fi
+AUTHRPC_ADDR="127.0.0.1"
+echo "Reth HTTP RPC: ${RETH_HTTP_ADDR}; Engine API: ${AUTHRPC_ADDR}; monitoring: ${MONITORING_ADDR}"
+
 # Extra prompts for VALIDATOR
 if [ "$NODE_TYPE" = "validator" ]; then
   read -p "Enter Mainnet ETH RPC endpoint (ETH_RPC_URL): " ETH_RPC_URL
@@ -107,6 +125,7 @@ fi
   echo "export NODE_TYPE=\"$NODE_TYPE\""
   echo "export EXEC_CLIENT=\"$EXEC_CLIENT\""
   echo "export ENABLE_RETH_PRUNE=\"$ENABLE_RETH_PRUNE\""
+  echo "export EXPOSE_PUBLIC_RPC=\"$EXPOSE_PUBLIC_RPC\""
   echo "export OG_SERVICE_NAME=\"$OG_SERVICE_NAME\""
   if [ "$EXEC_CLIENT" = "geth" ]; then
     echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\""
@@ -241,8 +260,8 @@ sed -i "s/^moniker *=.*/moniker = \"$OG_MONIKER\"/" $CONFIG/config.toml
 sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:${OG_PORT}656\"|" $CONFIG/config.toml
 sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:${OG_PORT}657\"|" $CONFIG/config.toml
 sed -i "s|^proxy_app = .*|proxy_app = \"tcp://127.0.0.1:${OG_PORT}658\"|" $CONFIG/config.toml
-sed -i "s|^pprof_laddr = .*|pprof_laddr = \"0.0.0.0:${OG_PORT}060\"|" $CONFIG/config.toml
-sed -i "s|prometheus_listen_addr = \".*\"|prometheus_listen_addr = \"0.0.0.0:${OG_PORT}660\"|" $CONFIG/config.toml
+sed -i "s|^pprof_laddr = .*|pprof_laddr = \"${MONITORING_ADDR}:${OG_PORT}060\"|" $CONFIG/config.toml
+sed -i "s|prometheus_listen_addr = \".*\"|prometheus_listen_addr = \"${MONITORING_ADDR}:${OG_PORT}660\"|" $CONFIG/config.toml
 sed -i "s/^timeout_commit *=.*/timeout_commit = \"200ms\"/" $CONFIG/config.toml
 
 # indexer toggle
@@ -416,10 +435,10 @@ ExecStart=$HOME/go/bin/0g-reth node \\
   --chain $HOME/.0gchaind/geth-genesis.json \\
   ${RETH_PRUNE_FLAGS}
   --http \\
-  --http.addr 0.0.0.0 \\
+  --http.addr ${RETH_HTTP_ADDR} \\
   --http.port ${OG_PORT}545 \\
   --http.api eth,net,web3,txpool \\
-  --authrpc.addr 0.0.0.0 \\
+  --authrpc.addr ${AUTHRPC_ADDR} \\
   --authrpc.port ${OG_PORT}551 \\
   --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
   --datadir $HOME/.0gchaind/0g-home/reth-home \\
