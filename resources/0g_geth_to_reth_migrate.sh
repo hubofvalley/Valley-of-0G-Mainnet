@@ -87,6 +87,17 @@ while true; do
 done
 echo -e "Pruning mode: ${CYAN}$([ "$ENABLE_RETH_PRUNE" = "yes" ] && echo "Pruned (CL+EL)" || echo "Archive (no prune)")${RESET}"
 
+# Safe by default. Set EXPOSE_PUBLIC_RPC=yes only when the node is intended
+# to serve public HTTP RPC behind appropriate network controls. The Engine API
+# stays local even in that case: it carries the validator's JWT capability.
+case "${EXPOSE_PUBLIC_RPC:-no}" in
+  yes|y) RETH_HTTP_ADDR="0.0.0.0" ;;
+  no|n)  RETH_HTTP_ADDR="127.0.0.1" ;;
+  *) echo "EXPOSE_PUBLIC_RPC must be yes or no."; exit 1 ;;
+esac
+AUTHRPC_ADDR="127.0.0.1"
+echo -e "Reth HTTP RPC bind: ${CYAN}${RETH_HTTP_ADDR}${RESET}; Engine API bind: ${CYAN}${AUTHRPC_ADDR}${RESET}"
+
 # ETH RPC for validator restaking (optional, only if validator mode)
 if [ "${NODE_TYPE:-}" = "validator" ] && [ -z "${ETH_RPC_URL:-}" ]; then
     read -p "Enter Mainnet ETH RPC endpoint (ETH_RPC_URL): " ETH_RPC_URL
@@ -224,10 +235,10 @@ PRUNEEOF
     fi
     RETH_EXEC_CMD="$RETH_EXEC_CMD \\
   --http \\
-  --http.addr 0.0.0.0 \\
+  --http.addr ${RETH_HTTP_ADDR} \\
   --http.port ${OG_PORT}545 \\
   --http.api eth,net,web3,txpool \\
-  --authrpc.addr 0.0.0.0 \\
+  --authrpc.addr ${AUTHRPC_ADDR} \\
   --authrpc.port ${OG_PORT}551 \\
   --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
   --datadir $RETH_HOME \\
@@ -504,10 +515,10 @@ if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
 fi
 RETH_EXEC_CMD="$RETH_EXEC_CMD \\
   --http \\
-  --http.addr 0.0.0.0 \\
+  --http.addr ${RETH_HTTP_ADDR} \\
   --http.port ${OG_PORT}545 \\
   --http.api eth,net,web3,txpool \\
-  --authrpc.addr 0.0.0.0 \\
+  --authrpc.addr ${AUTHRPC_ADDR} \\
   --authrpc.port ${OG_PORT}551 \\
   --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
   --datadir $HOME/.0gchaind/0g-home/reth-home \\
