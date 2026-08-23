@@ -2,7 +2,7 @@
 
 This folder contains detailed documentation for each script in the Valley of 0G toolkit.
 
-## 📚 Script Documentation
+## Documentation
 
 ### Validator Node
 | Document | Description |
@@ -23,13 +23,13 @@ This folder contains detailed documentation for each script in the Valley of 0G 
 | [snapshots.md](snapshots.md) | Snapshot application guide |
 | [scheduler.md](scheduler.md) | Node scheduling and automation |
 
-## 🚀 Quick Navigation
+## Common tasks
 
-- **New to 0G?** Start with [validator-node.md](validator-node.md)
-- **Running storage?** See [storage-node.md](storage-node.md)
-- **Need automation?** Check [scheduler.md](scheduler.md)
+- Setting up for the first time: [validator-node.md](validator-node.md)
+- Running a storage node: [storage-node.md](storage-node.md)
+- Automating restarts and upgrades: [scheduler.md](scheduler.md)
 
-## ❓ Need Help?
+## Support
 
 - Open an issue on [GitHub](https://github.com/hubofvalley/Valley-of-0G-Mainnet/issues)
 - Contact: letsbuidltogether@grandvalleys.com

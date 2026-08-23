@@ -5,7 +5,7 @@
 <h1 align="center">Valley of 0G Mainnet</h1>
 
 <p align="center">
-  <strong>A comprehensive toolkit for deploying and managing 0G (Zero Gravity) nodes on mainnet</strong>
+  <strong>Toolkit for deploying and managing 0G (Zero Gravity) nodes on mainnet</strong>
 </p>
 
 <p align="center">
@@ -17,15 +17,15 @@
 
 ---
 
-## 🚀 Overview
+## Overview
 
 Valley of 0G Mainnet is an open-source project by **Grand Valley** that provides automated scripts for deploying and managing 0G blockchain infrastructure, including:
 
 - **Validator Nodes** - Full consensus client with execution layer
-- **Storage Nodes** - Decentralized storage network participation  
+- **Storage Nodes** - Decentralized storage network participation
 - **Storage KV** - Key-value storage service nodes
 
-## 📋 System Requirements
+## System Requirements
 
 ### Validator Node
 | Category | Requirements |
@@ -50,7 +50,7 @@ Valley of 0G Mainnet is an open-source project by **Grand Valley** that provides
 | RAM | 32+ GB |
 | Storage | Matches KV streams maintained |
 
-## ⚡ Quick Start
+## Getting started
 
 Run the main interactive menu:
 
@@ -58,7 +58,7 @@ Run the main interactive menu:
 bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
 ```
 
-## 📦 Available Scripts
+## Available Scripts
 
 | Script | Description |
 |--------|-------------|
@@ -79,7 +79,7 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | [`0g_turbo_zgs_node_snapshot.sh`](resources/0g_turbo_zgs_node_snapshot.sh) | Apply a Turbo ZGS snapshot |
 | [`cosmovisor_migration.sh`](resources/cosmovisor_migration.sh) | Migrate the validator service to Cosmovisor |
 
-## 🔧 Current Versions
+## Current Versions
 
 | Component | Version |
 |-----------|---------|
@@ -90,7 +90,7 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | Storage KV | v1.4.0 |
 | Chain | 0gchain-16661 (Aristotle) |
 
-## 🌐 Grand Valley Public Endpoints
+## Grand Valley Public Endpoints
 
 | Type | URL |
 |------|-----|
@@ -100,7 +100,7 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | Cosmos WebSocket | `wss://lightnode-rpc-mainnet-0g.grandvalleys.com/websocket` |
 | EVM WebSocket | `wss://lightnode-wss-mainnet-0g.grandvalleys.com` |
 
-## 🔐 Privacy & Security
+## Privacy & Security
 
 - Scripts execute locally and may install packages, create services, or modify node data.
 - Treat private keys, validator keys, and JWT files as secrets. Never paste them into issues or logs.
@@ -108,7 +108,7 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 - Back up validator keys and configuration before destructive maintenance.
 - Versions and verification status are tracked in [`VERSIONS.json`](VERSIONS.json).
 
-## 📖 Documentation
+## Documentation
 
 For detailed documentation on each script, see the [docs/](docs/) folder:
 
@@ -121,7 +121,7 @@ For detailed documentation on each script, see the [docs/](docs/) folder:
 - [Cosmovisor guide](docs/cosmovisor.md) - automatic consensus upgrades.
 - [AI Alignment Node guide](docs/ai-alignment-node.md) - installation and service operations.
 
-## 🔗 Links
+## Links
 
 **0G (Zero Gravity):**
 - [Website](https://0g.ai/) | [Docs](https://docs.0g.ai/) | [Discord](https://discord.gg/0glabs) | [GitHub](https://github.com/0gfoundation) | [Explorer](https://explorer.0g.ai/)
@@ -129,11 +129,11 @@ For detailed documentation on each script, see the [docs/](docs/) folder:
 **Grand Valley:**
 - [GitHub](https://github.com/hubofvalley) | [X/Twitter](https://x.com/bacvalley) | [Mainnet Guide](https://github.com/hubofvalley/Mainnet-Guides/tree/main/0g%20(zero-gravity))
 
-## 📧 Contact
+## Contact
 
 Email: letsbuidltogether@grandvalleys.com
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
