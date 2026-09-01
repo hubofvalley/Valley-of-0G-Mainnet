@@ -63,6 +63,8 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | Script | Description |
 |--------|-------------|
 | [`valleyof0G.sh`](resources/valleyof0G.sh) | Main interactive menu for all operations |
+| [`valley_manifest.sh`](resources/valley_manifest.sh) | Shared `VERSIONS.json` loader and integrity helpers |
+| [`0gchain_app_install.sh`](resources/0gchain_app_install.sh) | Install the reviewed 0gchaind CLI artifact |
 | [`0g_validator_node_aristotle_install.sh`](resources/0g_validator_node_aristotle_install.sh) | Deploy validator node (Aristotle chain) |
 | [`0g_validator_node_update_manual.sh`](resources/0g_validator_node_update_manual.sh) | Manual validator update |
 | [`0g_storage_node_install.sh`](resources/0g_storage_node_install.sh) | Install storage node |
@@ -104,9 +106,11 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 
 - Scripts execute locally and may install packages, create services, or modify node data.
 - Treat private keys, validator keys, and JWT files as secrets. Never paste them into issues or logs.
+- Validator/staking transactions use Foundry's native interactive signer prompt; Valley does not read or persist the EVM wallet private key.
+- Storage v1.1.0 and Alignment v1.0.0 still expose raw-key requirements upstream. Valley does not automate those raw-key paths: fresh Storage/Alignment flows stage reviewed software and stop before secret-dependent startup or signing.
 - Review script changes before running updates, especially snapshot, migration, rollback, and deletion operations.
 - Back up validator keys and configuration before destructive maintenance.
-- Versions and verification status are tracked in [`VERSIONS.json`](VERSIONS.json).
+- [`VERSIONS.json`](VERSIONS.json) is authoritative for managed upstream tags/commits and release SHA-256 digests; installers/updaters/migrations fail closed when required integrity fields are missing.
 
 ## Documentation
 

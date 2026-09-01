@@ -1,4 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
+[ -r "$MANIFEST_LIB" ] || { echo "Valley manifest loader not found: $MANIFEST_LIB" >&2; exit 2; }
+# shellcheck source=resources/valley_manifest.sh
+source "$MANIFEST_LIB"
+valley_manifest_init
+TARGET_VERSION=$(valley_manifest_get '.components.storage_kv.version_current')
+TARGET_COMMIT=$(valley_manifest_get '.components.storage_kv.pinned_commit')
+KV_REPO=$(valley_manifest_get '.components.storage_kv.release_repo')
+valley_require_git_commit "$TARGET_COMMIT" || { echo "Invalid Storage KV commit in VERSIONS.json." >&2; exit 2; }
 
 # Function to query the latest block number from a JSON-RPC endpoint
 query_block_number() {
@@ -87,22 +99,23 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 echo 'export ZGS_LOG_SYNC_BLOCK="326165"' >> ~/.bash_profile
 # Export required variables
 echo "export ZGS_NODE=\"$ZGS_NODE\"" >> ~/.bash_profile
-echo "export ZGS_KV_VERSION=\"v1.4.0\"" >> ~/.bash_profile
+echo "export ZGS_KV_VERSION=\"$TARGET_VERSION\"" >> ~/.bash_profile
 echo "export LOG_CONTRACT_ADDRESS=\"$LOG_CONTRACT_ADDRESS\"" >> ~/.bash_profile
 echo "export BLOCKCHAIN_RPC_ENDPOINT=\"$BLOCKCHAIN_RPC_ENDPOINT\"" >> ~/.bash_profile
 
 source ~/.bash_profile
 
-echo -e "\n\033[31mCHECK YOUR STORAGE KV VARIABLES\033[0m\n\nStorage KV Version: v1.4.0\nZGS_NODE: $ZGS_NODE\nLOG_CONTRACT_ADDRESS: $LOG_CONTRACT_ADDRESS\nZGS_LOG_SYNC_BLOCK: $ZGS_LOG_SYNC_BLOCK\nBLOCKCHAIN_RPC_ENDPOINT: $BLOCKCHAIN_RPC_ENDPOINT\n\n" "\033[3m\"Let's Buidl 0G Together\" - Grand Valley\033[0m"
+echo -e "\n\033[31mCHECK YOUR STORAGE KV VARIABLES\033[0m\n\nStorage KV Version: $TARGET_VERSION\nZGS_NODE: $ZGS_NODE\nLOG_CONTRACT_ADDRESS: $LOG_CONTRACT_ADDRESS\nZGS_LOG_SYNC_BLOCK: $ZGS_LOG_SYNC_BLOCK\nBLOCKCHAIN_RPC_ENDPOINT: $BLOCKCHAIN_RPC_ENDPOINT\n\n" "\033[3m\"Let's Buidl 0G Together\" - Grand Valley\033[0m"
 
 # 5. Download binary
 cd $HOME
-git clone -b v1.4.0 https://github.com/0gfoundation/0g-storage-kv.git
+git clone "$KV_REPO.git" "$HOME/0g-storage-kv"
 cd $HOME/0g-storage-kv
 git stash
 git fetch --all --tags
-git checkout 99c91d95a1d664ffdc9700ef492a00bd76c9c5d1
-git submodule update --init
+git checkout --detach "$TARGET_COMMIT"
+[ "$(git rev-parse HEAD)" = "$TARGET_COMMIT" ] || { echo "Storage KV source pin verification failed." >&2; exit 1; }
+git submodule update --init --recursive
 sudo apt install cargo
 
 # Build the binary

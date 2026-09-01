@@ -28,7 +28,13 @@ Select **Storage Node** → **Deploy Storage Node** and review every prompt. The
 - RPC listener: port `5678`
 - admin listener: port `5679`, which should remain private
 
-The installer needs an EVM RPC endpoint and a storage miner key. Do not expose the key in shell history, logs, screenshots, or support requests.
+The managed installer needs an EVM RPC endpoint but does not collect a storage miner key. It stages the reviewed source, non-secret configuration, and a disabled/stopped service unit, then stops before the upstream secret-dependent mining step.
+
+## Miner-key boundary
+
+The managed Storage target still requires raw miner-key material through upstream configuration or command-line interfaces. Valley does not collect or inject that raw key. On a fresh installation the service is not enabled or started.
+
+For an existing node, **Update Storage Node** preserves the current config without reading, printing, copying, or rewriting a populated `miner_key`. That legacy persistent-secret condition remains an explicit operator-owned upstream limitation. **Change Storage Node** automates RPC changes only and intentionally refuses miner-key replacement.
 
 ## Health Checks
 

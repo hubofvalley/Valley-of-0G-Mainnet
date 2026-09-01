@@ -1,9 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
+[ -r "$MANIFEST_LIB" ] || { echo "Valley manifest loader not found: $MANIFEST_LIB" >&2; exit 2; }
+# shellcheck source=resources/valley_manifest.sh
+source "$MANIFEST_LIB"
+valley_manifest_init
+COSMOVISOR_MODULE=$(valley_manifest_get '.tools.cosmovisor.module')
+COSMOVISOR_VERSION=$(valley_manifest_get '.tools.cosmovisor.version')
 
 # Function to install cosmovisor
 install_cosmovisor() {
     echo "Installing cosmovisor..."
-    if ! go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@latest; then
+    if ! go install "${COSMOVISOR_MODULE}/cmd/cosmovisor@${COSMOVISOR_VERSION}"; then
         echo "Failed to install cosmovisor. Exiting."
         exit 1
     fi

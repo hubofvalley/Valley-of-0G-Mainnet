@@ -41,18 +41,18 @@ Run it as the user that owns the 0G node files. The script stores environment va
 | 1m. Migrate Geth to Reth | Migrates execution client from geth to reth. | Experimental EL migration. | High - experimental service/data change. |
 | 1n. Rollback & Align CL/EL Height | Recovery flow to align consensus/execution height. | Broken CL/EL sync recovery. | High - recovery operation. |
 | 1o. Check & Withdraw Rewards | Opens staking rewards management for delegation value, operator commission, tip fees, and withdrawal queue. | Check validator earnings or submit reward-related validator-contract transactions. | Mixed - dashboard/delegation/queue checks are read-only; withdrawals and queue processing submit transactions. |
-| 2a. Deploy Storage Node | Installs 0G storage node. | Run storage service. | Medium - installs service and data. |
+| 2a. Deploy Storage Node | Stages the reviewed Storage binary, non-secret config, and service unit. It does not collect a miner key or start mining. | Prepare a fresh Storage installation before the operator-owned upstream secret step. | Medium - installs software; service remains disabled/stopped. |
 | 2b. Update Storage Node | Updates storage node binary/service. | Storage node upgrade. | Medium. |
 | 2c. Apply Storage Node Snapshot | Applies storage node snapshot. | Speed up or recover storage sync. | Yes - can replace storage data. |
-| 2d. Change Storage Node | Changes storage node configuration. | Reconfigure storage service. | Medium. |
+| 2d. Change Storage Node | Changes the Storage blockchain RPC. Miner-key replacement is intentionally not automated. | Reconfigure a live Storage RPC endpoint. | Medium. |
 | 2e. Show Storage Node Logs | Tails storage logs. | Debug storage node. | No. |
 | 2f. Show Storage Node Status | Shows storage node status. | Health check. | No. |
 | 3a. Deploy Storage KV | Installs Storage KV service. | Run KV component. | Medium. |
 | 3b. Show Storage KV Logs | Tails Storage KV logs. | Debug KV component. | No. |
 | 3c. Update Storage KV | Updates Storage KV. | KV upgrade. | Medium. |
-| 4a. Run AI Alignment Node | Starts AI alignment node flow. | Run AI alignment component. | Medium. |
+| 4a. Run AI Alignment Node | Stages the verified Alignment binary, non-secret config, and optional disabled unit. | Prepare Alignment software without exposing the upstream raw service key. | Low - no service start or transaction. |
 | 4b. Show AI Alignment Node Logs | Tails AI alignment logs. | Debug AI component. | No. |
-| 4c. Approve AI Alignment Delegations | Bulk `registerOperator` approval flow. | Operator delegation setup. | Yes - on-chain write. |
+| 4c. Approve AI Alignment Delegations | Explains the fail-safe boundary; Valley does not submit because upstream v1.0.0 requires a raw `--key` argument. | Review before any manual upstream approval. | No - Valley submits no transaction. |
 | 5a. Restart Validator Node | Restarts validator stack. | After config or binary changes. | Low - downtime. |
 | 5b. Restart Storage Node | Restarts storage service. | Storage maintenance. | Low. |
 | 5c. Restart Storage KV | Restarts KV service. | KV maintenance. | Low. |
@@ -96,4 +96,5 @@ The withdrawal queue view shows the current block, sampled block time, each entr
 - `1m` and `1n` are high-risk recovery/migration actions. Test on non-production where possible.
 - In `1o`, never submit operator-only writes, including commission-rate changes, unless you are using the validator operator wallet.
 - Any menu item that submits a transaction spends gas and may move funds or stake.
-- Protect validator keys, EVM private keys, and service backups. Private key prompts hide typed input, but pasting keys into a terminal still deserves care.
+- Protect validator keys, EVM private keys, and service backups. Valley does not collect EVM wallet keys for validator/staking writes; Foundry prompts interactively.
+- Storage v1.1.0 and Alignment v1.0.0 still require raw key material upstream. Valley does not move those secrets into argv, shell exports, app config, or generated units; the fresh install flows stop before the secret-dependent step.
