@@ -287,9 +287,6 @@ function manage_validator_node() {
     esac
 }
 
-# Function to migrate to Cosmovisor
-
-
 function apply_snapshot() {
      run_repository_script resources/apply_snapshot.sh
      menu

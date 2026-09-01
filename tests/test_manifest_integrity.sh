@@ -19,11 +19,9 @@ jq -e '.source_of_truth | startswith("VERSIONS.json;")' "$MANIFEST" >/dev/null |
 [ "$(jq -r '.components.validator.bundle.version_current' "$MANIFEST")" = 'v1.0.6' ] || fail "validator target drift"
 [ "$(jq -r '.components.validator.bundle.release_artifact_sha256' "$MANIFEST")" = '7de32d15a82009bd7fb0da760c708aa5af55ebfc89ebb11d69cf45548f7ceca9' ] || fail "validator artifact digest drift"
 [ "$(jq -r '.components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")" = 'aa515a403ca2ac9d9321166942631ec158eeda822f3fc11263cd3bdb405c74c1' ] || fail "Alignment artifact digest drift"
-[ "$(jq -r '.tools.cosmovisor.version' "$MANIFEST")" = 'v1.7.3' ] || fail "Cosmovisor pin drift"
-
 while IFS= read -r value; do
     [[ "$value" =~ ^[0-9a-f]{40}$ ]] || fail "invalid commit pin: $value"
-done < <(jq -r '.components.storage_node.pinned_commit, .components.storage_kv.pinned_commit, .tools.cosmovisor.source_tag_commit' "$MANIFEST")
+done < <(jq -r '.components.storage_node.pinned_commit, .components.storage_kv.pinned_commit' "$MANIFEST")
 while IFS= read -r value; do
     [[ "$value" =~ ^[0-9a-f]{64}$ ]] || fail "invalid artifact digest: $value"
 done < <(jq -r '.components.validator.bundle.release_artifact_sha256, .components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")
@@ -40,7 +38,6 @@ covered=(
     resources/0g_storage_kv_install.sh
     resources/0g_storage_kv_update.sh
     resources/0g_ai_alignment_node_install.sh
-    resources/cosmovisor_migration.sh
 )
 for rel in "${covered[@]}"; do
     file="$ROOT/$rel"

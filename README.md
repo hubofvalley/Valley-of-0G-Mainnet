@@ -79,7 +79,6 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | [`0g_rollback_align.sh`](resources/0g_rollback_align.sh) | Roll back and realign consensus/execution clients |
 | [`0g_standard_zgs_node_snapshot.sh`](resources/0g_standard_zgs_node_snapshot.sh) | Apply a Standard ZGS snapshot |
 | [`0g_turbo_zgs_node_snapshot.sh`](resources/0g_turbo_zgs_node_snapshot.sh) | Apply a Turbo ZGS snapshot |
-| [`cosmovisor_migration.sh`](resources/cosmovisor_migration.sh) | Migrate the validator service to Cosmovisor |
 
 ## Current Versions
 
@@ -122,7 +121,6 @@ For detailed documentation on each script, see the [docs/](docs/) folder:
 - [Storage KV guide](docs/storage-kv.md) - Storage KV setup and maintenance.
 - [Snapshot guide](docs/snapshots.md) - validator and storage snapshot safety.
 - [Scheduler guide](docs/scheduler.md) - scheduled service operations.
-- [Cosmovisor guide](docs/cosmovisor.md) - automatic consensus upgrades.
 - [AI Alignment Node guide](docs/ai-alignment-node.md) - installation and service operations.
 
 ## Links

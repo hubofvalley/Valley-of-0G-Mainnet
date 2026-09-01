@@ -142,7 +142,6 @@
       "apply": "resources/apply_snapshot.sh"
     },
     "scheduler": "resources/0g_node_schedule.sh",
-    "cosmovisor_migration": "resources/cosmovisor_migration.sh",
     "geth_to_reth_migration": "resources/0g_geth_to_reth_migrate.sh",
     "rollback_align_cl_el": "resources/0g_rollback_align.sh",
     "storage_node_change": "resources/0g_storage_node_change.sh",
@@ -155,12 +154,5 @@
     "storage_kv": "docs/storage-kv.md",
     "snapshots": "docs/snapshots.md",
     "scheduler": "docs/scheduler.md"
-  },
-  "tools": {
-    "cosmovisor": {
-      "module": "cosmossdk.io/tools/cosmovisor",
-      "version": "v1.7.3",
-      "source_tag_commit": "5a2b715a0177ded578f6c4546d047c94ce69a864"
-    }
   }
 }
