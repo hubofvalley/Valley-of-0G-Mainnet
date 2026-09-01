@@ -1,208 +1,149 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RESET='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; RESET='\033[0m'
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
+[ -r "$MANIFEST_LIB" ] || { echo "Valley manifest loader not found: $MANIFEST_LIB" >&2; exit 2; }
+# shellcheck source=resources/valley_manifest.sh
+source "$MANIFEST_LIB"
+valley_manifest_init
 
-# Define new boot nodes
-BOOT_NODES=(
-  "/ip4/47.251.79.83/udp/1234/p2p/16Uiu2HAkvJYQABP1MdvfWfUZUzGLx1sBSDZ2AT92EFKcMCCPVawV"
-  "/ip4/47.238.87.44/udp/1234/p2p/16Uiu2HAmFGsLoajQdEds6tJqsLX7Dg8bYd2HWR4SbpJUut4QXqCj"
-  "/ip4/47.251.78.104/udp/1234/p2p/16Uiu2HAmSe9UWdHrqkn2mKh99b9DwYZZcea6krfidtU3e5tiHiwN"
-  "/ip4/47.76.30.235/udp/1234/p2p/16Uiu2HAm5tCqwGtXJemZqBhJ9JoQxdDgkWYavfCziaqaAYkGDSfU"
-  "/ip4/47.251.88.201/udp/1234/p2p/16Uiu2HAmFGrDV8wKToa1dd8uh6bz8bSY28n33iRP3pvfeBU6ysCw"
-  "/ip4/47.76.49.188/udp/1234/p2p/16Uiu2HAmBb7PQzvfZjHBENcF7E7mZaiHSrpBoH7mKTyNijYdqMM6"
-)
+TARGET_VERSION=$(valley_manifest_get '.components.storage_node.version_current')
+TARGET_TAG=$(valley_manifest_get '.components.storage_node.source_tag')
+TARGET_COMMIT=$(valley_manifest_get '.components.storage_node.pinned_commit')
+STORAGE_REPO=$(valley_manifest_get '.components.storage_node.release_repo')
+EXPECTED_CHAIN_ID=$(valley_manifest_get '.chain.evm_chain_id')
+valley_require_git_commit "$TARGET_COMMIT" || { echo "Invalid Storage commit in VERSIONS.json." >&2; exit 2; }
 
-# Function to query the latest block number from a JSON-RPC endpoint
-query_block_number() {
-    local endpoint=$1
-    local res
-    res=$(curl -s -X POST "$endpoint" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}')
-    local hex
-    hex=$(echo "$res" | jq -r '.result // empty')
-    if [ -z "$hex" ] || [ "$hex" = "null" ]; then
-        echo ""
-        return 1
-    fi
-    # Convert hex (0x...) to decimal
-    local block_number
-    block_number=$((hex))
-    echo "$block_number"
-} 
+NODE_DIR="${ZGS_HOME:-$HOME/0g-storage-node}"
+CONFIG_FILE="$NODE_DIR/run/config-mainnet.toml"
+SERVICE_NAME="zgs"
 
-# Ensure required tooling is available
-command -v jq >/dev/null 2>&1 || { echo "jq is required but not installed. Installing..."; sudo apt-get update -y && sudo apt-get install -y jq; }
-
-# Function to prompt user to choose JSON-RPC endpoint
-choose_json_rpc_endpoint() {
-    echo "Choose your JSON-RPC endpoint:"
-    echo "1. Enter your own JSON-RPC endpoint"
-    echo "2. Use a public JSON-RPC endpoint"
-    read -p "Enter your choice (1/2): " JSON_RPC_CHOICE
-
-    if [ "$JSON_RPC_CHOICE" == "1" ]; then
-        read -p "Enter your JSON-RPC endpoint: " BLOCKCHAIN_RPC_ENDPOINT
-        BLOCK_NUMBER=$(query_block_number $BLOCKCHAIN_RPC_ENDPOINT)
-        echo "Latest block number for $BLOCKCHAIN_RPC_ENDPOINT: $BLOCK_NUMBER"
-        read -p "Do you want to continue with this RPC endpoint? (yes/no): " CONTINUE_CHOICE
-        if [ "$CONTINUE_CHOICE" != "yes" ]; then
-            choose_json_rpc_endpoint
-        fi
-    elif [ "$JSON_RPC_CHOICE" == "2" ]; then
-        echo "Available public JSON-RPC endpoints:"
-        echo "1. https://lightnode-json-rpc-mainnet-0g.grandvalleys.com [$(query_block_number https://lightnode-json-rpc-mainnet-0g.grandvalleys.com)]"
-        echo "2. https://evmrpc.0g.ai [$(query_block_number https://evmrpc.0g.ai)]"
-        read -p "Enter the number of your chosen public JSON-RPC endpoint: " PUBLIC_RPC_CHOICE
-
-        case $PUBLIC_RPC_CHOICE in
-            1) BLOCKCHAIN_RPC_ENDPOINT="https://lightnode-json-rpc-mainnet-0g.grandvalleys.com";;
-            2) BLOCKCHAIN_RPC_ENDPOINT="https://evmrpc.0g.ai";;
-            *) echo "Invalid choice. Exiting."; exit 1;;
-        esac
-    else
-        echo "Invalid choice. Exiting."; exit 1
-    fi
+rpc_result() {
+    local endpoint=$1 method=$2
+    curl -fsS --connect-timeout 4 --max-time 8 -X POST "$endpoint" \
+        -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":[],\"id\":1}" 2>/dev/null |
+        jq -r '.result // empty' 2>/dev/null || true
 }
 
-echo -e "${YELLOW}⚠️  This script will DELETE your existing 0G Storage Node (${GREEN}zgs.service${YELLOW}) and install a fresh one.${RESET}"
-echo -e "${RED}Proceed ONLY if you are aware of the consequences.${RESET}"
-read -p "Press Enter to continue or Ctrl+C to cancel..."
+hex_to_dec() {
+    local value=$1
+    if [[ "$value" =~ ^0x[0-9a-fA-F]+$ ]]; then printf '%d\n' "$((16#${value#0x}))";
+    elif [[ "$value" =~ ^[0-9]+$ ]]; then printf '%s\n' "$value"; fi
+}
 
-# Delete previous installation
-echo -e "${RED}Deleting previous installation of 0G Storage Node...${RESET}"
-sudo systemctl stop zgs.service 2>/dev/null
-sudo systemctl disable zgs.service 2>/dev/null
-sudo rm -f /etc/systemd/system/zgs.service
-sudo rm -rf $HOME/0g-storage-node
-echo -e "${GREEN}Previous storage node deleted successfully.${RESET}"
+require_rpc_chain() {
+    local endpoint=$1 raw chain
+    raw=$(rpc_result "$endpoint" eth_chainId)
+    chain=$(hex_to_dec "$raw")
+    [ "$chain" = "$EXPECTED_CHAIN_ID" ] || {
+        echo "RPC rejected: $endpoint reports chain ${chain:-unavailable}; expected $EXPECTED_CHAIN_ID." >&2
+        return 1
+    }
+    echo "RPC verified: chain=$chain"
+}
 
-# Prompt user for private key (kept hidden)
-read -p "Enter your private key: " -s PRIVATE_KEY
-echo -e "\nPrivate key has been read and will be kept hidden for security."
-if [ -z "$PRIVATE_KEY" ]; then
-    echo "Private key cannot be empty. Exiting."
+choose_json_rpc_endpoint() {
+    local choice public_choice continue_choice
+    while true; do
+        echo "Choose your JSON-RPC endpoint:"
+        echo "1. Enter your own JSON-RPC endpoint"
+        echo "2. Use a public JSON-RPC endpoint"
+        read -r -p "Enter your choice (1/2): " choice
+        case "$choice" in
+            1)
+                read -r -p "Enter your JSON-RPC endpoint: " BLOCKCHAIN_RPC_ENDPOINT
+                if require_rpc_chain "$BLOCKCHAIN_RPC_ENDPOINT"; then
+                    read -r -p "Do you want to continue with this RPC endpoint? (yes/no): " continue_choice
+                    [ "$continue_choice" = "yes" ] && return 0
+                fi
+                ;;
+            2)
+                echo "Available public JSON-RPC endpoints:"
+                echo "1. https://lightnode-json-rpc-mainnet-0g.grandvalleys.com"
+                echo "2. https://evmrpc.0g.ai"
+                read -r -p "Enter the number of your chosen public JSON-RPC endpoint: " public_choice
+                case "$public_choice" in
+                    1) BLOCKCHAIN_RPC_ENDPOINT="https://lightnode-json-rpc-mainnet-0g.grandvalleys.com" ;;
+                    2) BLOCKCHAIN_RPC_ENDPOINT="https://evmrpc.0g.ai" ;;
+                    *) echo "Invalid choice."; continue ;;
+                esac
+                require_rpc_chain "$BLOCKCHAIN_RPC_ENDPOINT" && return 0
+                ;;
+            *) echo "Invalid choice." ;;
+        esac
+    done
+}
+
+if [ -e "$NODE_DIR" ] || systemctl cat "$SERVICE_NAME" >/dev/null 2>&1; then
+    echo -e "${RED}Existing Storage node detected.${RESET}"
+    echo "Safe-key mode will not delete or replace an existing mining instance. Use Update/Change instead."
     exit 1
 fi
 
-# Set contract type to turbo by default
-CONTRACT_TYPE="turbo"
+for tool in curl jq git systemctl; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "Required tool missing: $tool" >&2; exit 1; }
+done
 
-# Prompt user to choose JSON-RPC endpoint
 choose_json_rpc_endpoint
 
-echo "Current JSON-RPC endpoint: $BLOCKCHAIN_RPC_ENDPOINT"
+echo -e "${YELLOW}Storage mining-key boundary:${RESET}"
+echo "Upstream ${TARGET_TAG} requires miner key material through its config or command-line interface."
+echo "Valley will not collect that raw key or place it in argv, shell exports, or generated files."
+echo "This installer will stage the reviewed binary, non-secret config, and service unit, but will NOT enable/start mining."
+read -r -p "Type STAGE-STORAGE to continue: " confirm
+[ "$confirm" = "STAGE-STORAGE" ] || { echo "Storage staging cancelled."; exit 0; }
 
-# 1. Install dependencies for building from source
 sudo apt-get update -y
-sudo apt-get install clang cmake build-essential -y
-sudo apt install git -y
-sudo apt install libssl-dev -y
-sudo apt install pkg-config -y
-sudo apt-get install protobuf-compiler -y
-sudo apt-get install clang -y
-sudo apt-get install llvm llvm-dev -y
+sudo apt-get install -y clang cmake build-essential git libssl-dev pkg-config protobuf-compiler llvm llvm-dev cargo
 
-# 2. Install go
-cd $HOME && \
-ver="1.22.0" && \
-wget "https://golang.org/dl/go$ver.linux-amd64.tar.gz" && \
-sudo rm -rf /usr/local/go && \
-sudo tar -C /usr/local -xzf "go$ver.linux-amd64.tar.gz" && \
-rm "go$ver.linux-amd64.tar.gz" && \
-# Use single quotes so current PATH isn't expanded into the file at append time
-echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> ~/.bash_profile && \
-source ~/.bash_profile && \
-go version
-
-# 3. Install rustup (non-interactive)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && 
-# Ensure cargo is available in the current session
-source "$HOME/.cargo/env" || true
-
-# 4. Set vars
-echo 'export ZGS_LOG_SYNC_BLOCK="0"' >> ~/.bash_profile
-echo 'export ZGS_NODE_VERSION="v1.1.0"' >> ~/.bash_profile
-echo "export BLOCKCHAIN_RPC_ENDPOINT=\"$BLOCKCHAIN_RPC_ENDPOINT\"" >> ~/.bash_profile
-echo 'export LOG_CONTRACT_ADDRESS="'"0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"'"' >> ~/.bash_profile
-source ~/.bash_profile
-
-echo -e "\n\033[31mCHECK YOUR STORAGE NODE VARIABLES\033[0m\nZGS_NODE_VERSION: $ZGS_NODE_VERSION\nLOG_CONTRACT_ADDRESS: $LOG_CONTRACT_ADDRESS\nZGS_LOG_SYNC_BLOCK: $ZGS_LOG_SYNC_BLOCK\nBLOCKCHAIN_RPC_ENDPOINT: $BLOCKCHAIN_RPC_ENDPOINT\n\n" "\033[3m\"Let's Buidl 0G Together\" - Grand Valley\033[0m"
-
-# Check JSON-RPC sync
-echo "JSON-RPC latest block: $(query_block_number "$BLOCKCHAIN_RPC_ENDPOINT" || echo 'unknown')"
-
-# 5. Download binary
-cd $HOME
-git clone https://github.com/0gfoundation/0g-storage-node.git
-cd $HOME/0g-storage-node
-git stash
-git fetch --all --tags
-git submodule update --init
-git checkout main
-
-# 6. Build the binary
+cd "$HOME"
+git clone "$STORAGE_REPO.git" "$NODE_DIR"
+cd "$NODE_DIR"
+git fetch --tags --force
+git checkout --detach "$TARGET_COMMIT"
+[ "$(git rev-parse HEAD)" = "$TARGET_COMMIT" ] || { echo "Storage source pin verification failed." >&2; exit 1; }
+git submodule update --init --recursive
 cargo build --release
 
-# 7. Check the storage node version
-$HOME/0g-storage-node/target/release/zgs_node --version
+cp "$NODE_DIR/run/config-mainnet-turbo.toml" "$CONFIG_FILE"
+sed -i -E \
+    -e 's|^[[:space:]]*#?[[:space:]]*listen_address[[:space:]]*=.*|listen_address = "0.0.0.0:5678"|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*listen_address_admin[[:space:]]*=.*|listen_address_admin = "127.0.0.1:5679"|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*rpc_enabled[[:space:]]*=.*|rpc_enabled = true|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*log_sync_start_block_number[[:space:]]*=.*|log_sync_start_block_number = 2387557|' \
+    -e "s|^[[:space:]]*#?[[:space:]]*blockchain_rpc_endpoint[[:space:]]*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|" \
+    -e 's|^[[:space:]]*#?[[:space:]]*log_contract_address[[:space:]]*=.*|log_contract_address = "0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*mine_contract_address[[:space:]]*=.*|mine_contract_address = "0xCd01c5Cd953971CE4C2c9bFb95610236a7F414fe"|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*reward_contract_address[[:space:]]*=.*|reward_contract_address = "0x457aC76B58ffcDc118AABD6DbC63ff9072880870"|' \
+    "$CONFIG_FILE"
+chmod 600 "$CONFIG_FILE"
 
-# 8. Update node configuration based on contract type
-if [ "$CONTRACT_TYPE" == "turbo" ]; then
-    rm -rf $HOME/0g-storage-node/run/config-mainnet.toml && cp $HOME/0g-storage-node/run/config-mainnet-turbo.toml $HOME/0g-storage-node/run/config-mainnet.toml
-#elif [ "$CONTRACT_TYPE" == "standard" ]; then
-#    rm -rf $HOME/0g-storage-node/run/config-mainnet.toml && cp $HOME/0g-storage-node/run/config-mainnet-standard.toml $HOME/0g-storage-node/run/config-mainnet.toml
-#else
-#    echo "Invalid contract type. Please choose either 'turbo' or 'standard'."
-#    exit 1
+if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$CONFIG_FILE"; then
+    echo "Refusing to stage: source template unexpectedly contains populated miner_key." >&2
+    exit 1
 fi
 
-sed -i "
-s|^\s*#\?\s*miner_key\s*=.*|miner_key = \"$PRIVATE_KEY\"|
-s|^\s*#\?\s*listen_address\s*=.*|listen_address = \"0.0.0.0:5678\"|
-s|^\s*#\?\s*listen_address_admin\s*=.*|listen_address_admin = \"127.0.0.1:5679\"|
-s|^\s*#\?\s*rpc_enabled\s*=.*|rpc_enabled = true|
-s|^\s*#\?\s*log_sync_start_block_number\s*=.*|log_sync_start_block_number = 2387557|
-s|^\s*#\?\s*blockchain_rpc_endpoint\s*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|
-s|^\s*#\?\s*network_boot_nodes\s*=.*|network_boot_nodes = [\"/ip4/34.66.131.173/udp/1234/p2p/16Uiu2HAmG81UgZ1JJLx9T2HqELgJNP36ChHzYkCdA9HdxvAbb5jQ\",\"/ip4/34.60.163.4/udp/1234/p2p/16Uiu2HAmL3DoA7e7mbxs7CkeCPtNrAcfJFFtLpJDr2HWuR6QwJ8k\",\"/ip4/34.169.236.186/udp/1234/p2p/16Uiu2HAm489RdhEgZUFmNTR4jdLEE4HjrvwaPCkEpSYSgvqi1CbR\",\"/ip4/34.71.110.60/udp/1234/p2p/16Uiu2HAmBfGfbLNRegcqihiuXhgSXWNpgiGm6EwW2SYexfPUNUHQ\"]|
-s|^\s*#\?\s*log_contract_address\s*=.*|log_contract_address = \"0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526\"|
-s|^\s*#\?\s*mine_contract_address\s*=.*|mine_contract_address = \"0xCd01c5Cd953971CE4C2c9bFb95610236a7F414fe\"|
-s|^\s*#\?\s*reward_contract_address\s*=.*|reward_contract_address = \"0x457aC76B58ffcDc118AABD6DbC63ff9072880870\"|
-" $HOME/0g-storage-node/run/config-mainnet.toml
-
-# 9. Create service
-sudo tee /etc/systemd/system/zgs.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/${SERVICE_NAME}.service >/dev/null <<EOF_UNIT
 [Unit]
-Description=ZGS Node
+Description=0G Storage Node
 After=network.target
 
 [Service]
 User=$USER
-WorkingDirectory=$HOME/0g-storage-node/run
-ExecStart=$HOME/0g-storage-node/target/release/zgs_node --config $HOME/0g-storage-node/run/config-mainnet.toml
+WorkingDirectory=$NODE_DIR/run
+ExecStart=$NODE_DIR/target/release/zgs_node --config $CONFIG_FILE
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
-EOF
+EOF_UNIT
+sudo systemctl daemon-reload
 
-# 10. Start the node
-sudo systemctl daemon-reload && \
-sudo systemctl enable zgs && \
-sudo systemctl restart zgs
-
-# 11. Show logs by date
-echo "Full logs command: tail -f ~/0g-storage-node/run/log/zgs.log.$(TZ=UTC date +%Y-%m-%d)"
-
-# 12. Confirmation message for installation completion
-if systemctl is-active --quiet zgs; then
-    echo "Storage Node installation and services started successfully!"
-else
-    echo "Storage Node installation failed. Please check the logs for more information."
-fi
-
-echo "Let's Buidl 0G Together"
+echo -e "${GREEN}Storage Node ${TARGET_VERSION} staged from immutable commit ${TARGET_COMMIT}.${RESET}"
+echo "Service was NOT enabled or started because Valley does not handle the required raw miner key."
+echo "Review the official upstream secret requirement and configure/start the service manually only if you accept that residual upstream limitation."

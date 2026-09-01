@@ -7,6 +7,20 @@ set -euo pipefail
 
 GREEN="\e[32m"; YELLOW="\e[33m"; CYAN="\e[36m"; RED="\e[31m"; ORANGE="\e[38;5;214m"; RESET="\e[0m"
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
+[ -r "$MANIFEST_LIB" ] || { echo "Valley manifest loader not found: $MANIFEST_LIB" >&2; exit 2; }
+# shellcheck source=resources/valley_manifest.sh
+source "$MANIFEST_LIB"
+valley_manifest_init
+ARISTOTLE_VERSION=$(valley_manifest_get '.components.validator.bundle.version_current')
+ARISTOTLE_RELEASE_REF=$(valley_manifest_get '.components.validator.bundle.release_ref')
+ARISTOTLE_REPO=$(valley_manifest_get '.components.validator.bundle.release_repo')
+ARISTOTLE_ARTIFACT=$(valley_manifest_get '.components.validator.bundle.release_artifact')
+ARISTOTLE_SHA256=$(valley_manifest_get '.components.validator.bundle.release_artifact_sha256')
+valley_require_sha256 "$ARISTOTLE_SHA256" || { echo "Invalid Aristotle digest in VERSIONS.json." >&2; exit 2; }
+ARISTOTLE_URL="${ARISTOTLE_REPO}/releases/download/${ARISTOTLE_RELEASE_REF}/${ARISTOTLE_ARTIFACT}"
+
 echo -e "${ORANGE}╔══════════════════════════════════════════════════════════╗${RESET}"
 echo -e "${ORANGE}║${RESET}  ${CYAN}0G Mainnet: Geth → Reth Migration${RESET}                       ${ORANGE}║${RESET}"
 echo -e "${ORANGE}║${RESET}  ${YELLOW}This will replace your Geth execution client with Reth${RESET}  ${ORANGE}║${RESET}"
@@ -136,23 +150,24 @@ else
 fi
 fi
 
-# ==== STEP 2: Download Aristotle v1.0.6 & copy binaries ====
-echo -e "${CYAN}[Step 2/7] Downloading Aristotle v1.0.6 and preparing Reth binary...${RESET}"
+# ==== STEP 2: Download reviewed Aristotle bundle & copy binaries ====
+echo -e "${CYAN}[Step 2/7] Preparing Reth from managed Aristotle ${ARISTOTLE_VERSION}...${RESET}"
 cd "$HOME"
 if [ ! -f "$HOME/aristotle/bin/reth" ] && [ ! -f "$HOME/go/bin/0g-reth" ]; then
-    wget -q -O aristotle.tar.gz https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz
+    command -v curl >/dev/null 2>&1 || { echo "curl is required." >&2; exit 1; }
+    command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required." >&2; exit 1; }
+    curl -fL --retry 3 "$ARISTOTLE_URL" -o "$ARISTOTLE_ARTIFACT"
+    printf '%s  %s\n' "$ARISTOTLE_SHA256" "$ARISTOTLE_ARTIFACT" | sha256sum --check
     rm -rf aristotle-used
-    tar -xzvf aristotle.tar.gz -C "$HOME"
-    # Handle both possible extracted dir names
-    if [ -d "Aristotle-v1.0.6" ]; then
-        mv Aristotle-v1.0.6 aristotle-used
-    elif [ -d "aristotle-v1.0.6" ]; then
-        mv aristotle-v1.0.6 aristotle-used
+    tar -xzvf "$ARISTOTLE_ARTIFACT" -C "$HOME"
+    extracted_dir="aristotle-${ARISTOTLE_VERSION}"
+    if [ -d "$extracted_dir" ]; then
+        mv "$extracted_dir" aristotle-used
     elif [ ! -d "aristotle-used" ]; then
-        echo -e "${RED}Error: Could not find extracted directory.${RESET}"
+        echo -e "${RED}Error: verified Aristotle archive extracted an unexpected directory.${RESET}"
         exit 1
     fi
-    rm -f aristotle.tar.gz
+    rm -f "$ARISTOTLE_ARTIFACT"
 else
     # Use existing aristotle directory
     if [ -d "$HOME/aristotle" ] && [ ! -d "$HOME/aristotle-used" ]; then

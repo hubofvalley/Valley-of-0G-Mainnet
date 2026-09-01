@@ -8,7 +8,6 @@ This folder contains detailed documentation for each script in the Valley of 0G 
 | Document | Description |
 |----------|-------------|
 | [validator-node.md](validator-node.md) | Validator node installation, configuration, and management |
-| [cosmovisor.md](cosmovisor.md) | Cosmovisor setup and automatic upgrades |
 | [ai-alignment-node.md](ai-alignment-node.md) | AI Alignment Node installation and management |
 
 ### Storage Node

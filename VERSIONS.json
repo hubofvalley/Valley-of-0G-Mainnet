@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "network": "0g-mainnet",
   "human_name": "Valley of 0G — Mainnet",
-  "last_updated": "2026-07-13",
-  "source_of_truth": "github.com/hubofvalley/Valley-of-0G-Mainnet (resources/*.sh)",
+  "last_updated": "2026-09-02",
+  "source_of_truth": "VERSIONS.json; managed installers/updaters/migrations consume immutable upstream refs and release digests from this manifest",
   "verification_status": "live_validated_partial",
   "verification_note": "Validator was live-validated on a Grand Valley RPC node: Aristotle bundle v1.0.6, reth 1.8.1 active, geth 1.15.11 inactive (2026-06-26); 0gchaind e8e1071 matched the official v1.0.6 release asset by SHA-256 (2026-07-13). Version model: bundle (v1.0.6, upgrade deadline applies) plus ships (component versions shipped inside the bundle). gv-ops compares live binaries against bundle.ships, not against the bundle version. Storage/storage-kv/alignment are not installed on the validated node yet, so those values are still seeded from scripts (needs_live_verification).",
   "chain": {
@@ -20,7 +20,6 @@
       "bundle": {
         "name": "Aristotle",
         "version_current": "v1.0.6",
-        "version_options": ["v1.0.2", "v1.0.3", "v1.0.4", "v1.0.6"],
         "release_repo": "https://github.com/0gfoundation/0gchain-Aristotle",
         "release_artifact_pattern": "aristotle-<version>.tar.gz",
         "deadline_note": "v1.0.6 'Must upgrade before 2026-06-26 00:00 UTC'. The v1.0.6 artifact URL uses the 'v' prefix (releases/download/v1.0.6/); older versions do not.",
@@ -29,7 +28,12 @@
           "geth": "1.15.11",
           "reth": "1.8.1"
         },
-        "ships_note": "Component versions shipped inside bundle v1.0.6. This is the apples-to-apples comparison target for gv-ops vs live binary versions; do not compare binary versions (for example reth 1.8.1) against the bundle version (v1.0.6). geth 1.15.11 and reth 1.8.1 were live-validated on a Grand Valley RPC node (2026-06-26). The live 0gchaind binary and official v1.0.6 release asset both report e8e1071 and have matching SHA-256 dba1fb9c08fb65d30b265bc421919f40b84f06059ead25f3a661da5a5dafdbc9 (2026-07-13)."
+        "ships_note": "Component versions shipped inside bundle v1.0.6. This is the apples-to-apples comparison target for gv-ops vs live binary versions; do not compare binary versions (for example reth 1.8.1) against the bundle version (v1.0.6). geth 1.15.11 and reth 1.8.1 were live-validated on a Grand Valley RPC node (2026-06-26). The live 0gchaind binary and official v1.0.6 release asset both report e8e1071 and have matching SHA-256 dba1fb9c08fb65d30b265bc421919f40b84f06059ead25f3a661da5a5dafdbc9 (2026-07-13).",
+        "upstream_latest": "v1.0.6",
+        "upgrade_status": "validated_current",
+        "release_ref": "v1.0.6",
+        "release_artifact": "aristotle-v1.0.6.tar.gz",
+        "release_artifact_sha256": "7de32d15a82009bd7fb0da760c708aa5af55ebfc89ebb11d69cf45548f7ceca9"
       },
       "live_verified": {
         "bundle_version": "v1.0.6",
@@ -40,7 +44,10 @@
       "execution_client": {
         "selectable": true,
         "xor_active": true,
-        "options": ["geth", "reth"],
+        "options": [
+          "geth",
+          "reth"
+        ],
         "geth_binary": "0g-geth",
         "reth_binary": "0g-reth",
         "note": "Execution client choice: geth OR reth (XOR); the node runs exactly one. gv-ops checks only the active client; an intentionally inactive client must not be flagged as CHECK. The validated Grand Valley RPC node uses reth."
@@ -64,27 +71,44 @@
       "name": "0g-storage-node",
       "role": "storage",
       "needs_live_verification": true,
-      "binaries": ["zgs_node"],
+      "binaries": [
+        "zgs_node"
+      ],
       "release_repo": "https://github.com/0gfoundation/0g-storage-node",
       "version_current": "v1.1.0",
-      "version_source": "built from the main branch (env ZGS_NODE_VERSION=v1.1.0)",
-      "services": ["zgs"],
+      "version_source": "built from immutable upstream v1.1.0 peeled commit",
+      "services": [
+        "zgs"
+      ],
       "config": "$HOME/0g-storage-node/run/config-mainnet.toml",
       "install_script": "resources/0g_storage_node_install.sh",
-      "update_script": "resources/0g_storage_node_update.sh"
+      "update_script": "resources/0g_storage_node_update.sh",
+      "source_tag": "v1.1.0",
+      "source_tag_object": "eaa9149d54bba0c47529f543a4c330a6bc3bbb85",
+      "pinned_commit": "e41726de7825b9e8e6eeb7802f40308d880089b2",
+      "upstream_latest": "v1.2.0",
+      "upgrade_status": "review_required"
     },
     "storage_kv": {
       "name": "0g-storage-kv",
       "role": "storage-kv",
       "needs_live_verification": true,
-      "binaries": ["zgs_kv"],
+      "binaries": [
+        "zgs_kv"
+      ],
       "release_repo": "https://github.com/0gfoundation/0g-storage-kv",
       "version_current": "v1.4.0",
-      "pinned_commit": "99c91d95a1d664ffdc9700ef492a00bd76c9c5d1",
-      "services": ["zgskv"],
+      "pinned_commit": "707db658c80aebb9f902152b311a1c26884f9e63",
+      "services": [
+        "zgskv"
+      ],
       "config": "$HOME/0g-storage-kv/run/config.toml",
       "install_script": "resources/0g_storage_kv_install.sh",
-      "update_script": "resources/0g_storage_kv_update.sh"
+      "update_script": "resources/0g_storage_kv_update.sh",
+      "source_tag": "v1.4.0",
+      "source_tag_object": "12c9e889686f12c945c33e9c0ba097d6a5dd1f63",
+      "upstream_latest": "v1.5.1",
+      "upgrade_status": "review_required"
     },
     "ai_alignment_node": {
       "name": "alignment-node",
@@ -94,7 +118,12 @@
       "version_current": "v1.0.0",
       "release_artifact": "alignment-node.tar.gz",
       "chain_id": 16661,
-      "install_script": "resources/0g_ai_alignment_node_install.sh"
+      "install_script": "resources/0g_ai_alignment_node_install.sh",
+      "release_ref": "v1.0.0",
+      "release_artifact_sha256": "aa515a403ca2ac9d9321166942631ec158eeda822f3fc11263cd3bdb405c74c1",
+      "upstream_latest": "v1.0.0",
+      "upgrade_status": "validated_current",
+      "secret_boundary": "upstream v1.0.0 requires raw service private-key material in config/environment or --key for transaction helpers; Valley stages the binary/config but does not collect, persist, or pass raw private keys"
     }
   },
   "endpoints": {
@@ -113,10 +142,10 @@
       "apply": "resources/apply_snapshot.sh"
     },
     "scheduler": "resources/0g_node_schedule.sh",
-    "cosmovisor_migration": "resources/cosmovisor_migration.sh",
     "geth_to_reth_migration": "resources/0g_geth_to_reth_migrate.sh",
     "rollback_align_cl_el": "resources/0g_rollback_align.sh",
-    "storage_node_change": "resources/0g_storage_node_change.sh"
+    "storage_node_change": "resources/0g_storage_node_change.sh",
+    "cli_installer": "resources/0gchain_app_install.sh"
   },
   "explorer": "https://explorer.0g.ai/mainnet/validators",
   "docs": {

@@ -99,7 +99,6 @@ After both layers are fully synced:
 ## Updates, Migration, and Rollback
 
 - **Manual bundle update:** use **Manage Validator Node** → **Update Validator Node Version**.
-- **Cosmovisor:** follow [Cosmovisor Setup](cosmovisor.md).
 - **Geth to Reth:** use the migration option only after checking disk space and backing up configuration. Do not delete the Geth data until Reth is synced and stable.
 - **CL/EL rollback alignment:** this is destructive maintenance. Record both heights, stop both services, preserve validator keys, and keep a recoverable data backup before proceeding.
 
@@ -114,7 +113,6 @@ Test update and rollback procedures on a non-validator or staging node first.
 
 ## Related Documentation
 
-- [Cosmovisor Setup](cosmovisor.md)
 - [Snapshot Application](snapshots.md)
 - [Node Scheduler](scheduler.md)
 

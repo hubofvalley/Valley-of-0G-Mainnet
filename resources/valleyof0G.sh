@@ -9,6 +9,49 @@ CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
 ORANGE='\033[38;5;214m'
 RESET='\033[0m'
+
+# Menu helper transport. Local checkouts execute sibling files; remote menu runs
+# fetch the helper, manifest, and shared manifest loader from the same source ref.
+# Managed upstream code/artifacts are then resolved only from immutable values in
+# VERSIONS.json. VALLEY_SOURCE_REF may be set to a reviewed commit after release.
+VALLEY_REPOSITORY="hubofvalley/Valley-of-0G-Mainnet"
+VALLEY_SOURCE_REF="${VALLEY_SOURCE_REF:-main}"
+
+run_repository_script() {
+    local relative_path=$1
+    shift
+    local script_dir local_script local_manifest local_library
+    local tmpdir remote_script remote_manifest remote_library rc
+
+    script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)
+    local_script="${script_dir}/${relative_path#resources/}"
+    local_manifest="${script_dir}/../VERSIONS.json"
+    local_library="${script_dir}/valley_manifest.sh"
+    if [ -n "$script_dir" ] && [ -f "$local_script" ] && [ -f "$local_manifest" ] && [ -f "$local_library" ]; then
+        VALLEY_MANIFEST_PATH="$local_manifest" VALLEY_MANIFEST_LIB="$local_library"             bash "$local_script" "$@"
+        return $?
+    fi
+
+    command -v curl >/dev/null 2>&1 || {
+        echo "Managed helper blocked: curl is required." >&2
+        return 2
+    }
+    tmpdir=$(mktemp -d)
+    remote_script="$tmpdir/helper.sh"
+    remote_manifest="$tmpdir/VERSIONS.json"
+    remote_library="$tmpdir/valley_manifest.sh"
+    if ! curl -fsSL "https://raw.githubusercontent.com/${VALLEY_REPOSITORY}/${VALLEY_SOURCE_REF}/${relative_path}" -o "$remote_script"        || ! curl -fsSL "https://raw.githubusercontent.com/${VALLEY_REPOSITORY}/${VALLEY_SOURCE_REF}/VERSIONS.json" -o "$remote_manifest"        || ! curl -fsSL "https://raw.githubusercontent.com/${VALLEY_REPOSITORY}/${VALLEY_SOURCE_REF}/resources/valley_manifest.sh" -o "$remote_library"; then
+        rm -rf "$tmpdir"
+        echo "Managed helper download failed; nothing was executed." >&2
+        return 2
+    fi
+    chmod +x "$remote_script"
+    VALLEY_MANIFEST_PATH="$remote_manifest" VALLEY_MANIFEST_LIB="$remote_library"         bash "$remote_script" "$@"
+    rc=$?
+    rm -rf "$tmpdir"
+    return "$rc"
+}
+
 # Service Name Detection - Ask Once, Remember Forever
 source $HOME/.bash_profile 2>/dev/null
 
@@ -220,7 +263,7 @@ function deploy_validator_node() {
     echo -e "${YELLOW}This may take 1-5 minutes. Please don't interrupt the process.${RESET}"
     sleep 2
 
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_validator_node_aristotle_install.sh)
+    run_repository_script resources/0g_validator_node_aristotle_install.sh
     menu
 }
 
@@ -232,7 +275,7 @@ function manage_validator_node() {
 
     case $choice in
         1)
-            bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_validator_node_update_manual.sh)
+            run_repository_script resources/0g_validator_node_update_manual.sh
             menu
             ;;
         2)
@@ -244,50 +287,21 @@ function manage_validator_node() {
     esac
 }
 
-# Function to migrate to Cosmovisor
-
-
 function apply_snapshot() {
-     bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/apply_snapshot.sh)
+     run_repository_script resources/apply_snapshot.sh
      menu
 }
 
 function install_0gchain_app() {
-    cd $HOME || return
-    echo "Downloading and installing 0gchaind v1.0.6..."
-    
-    # Download and extract package
-    wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz -O aristotle-v1.0.6.tar.gz
-    tar -xzf aristotle-v1.0.6.tar.gz -C $HOME
-    if [ -d "$HOME/aristotle-v1.0.6" ]; then
-        rm -rf "$HOME/aristotle"
-        mv "$HOME/aristotle-v1.0.6" "$HOME/aristotle"
-    fi
-    
-    # Ensure target directories exist
-    mkdir -p $HOME/go/bin
-    
-    # Install binary
-    if [ -f "$HOME/aristotle/bin/0gchaind" ]; then
-        # Copy to standard location
-        cp "$HOME/aristotle/bin/0gchaind" "$HOME/go/bin/0gchaind"
-        sudo chmod +x "$HOME/go/bin/0gchaind"
-        echo "0gchaind v1.0.6 installed successfully to:"
-        echo "- $HOME/go/bin/0gchaind"
-    else
-        echo "Error: 0gchaind binary not found in extracted package!"
-    fi
-    
-    # Cleanup
-    rm -f aristotle-v1.0.6.tar.gz
+    run_repository_script resources/0gchain_app_install.sh
     menu
 }
 
 function create_validator() {
     # Only check; install is optional and prompted later if needed for auto path
     ensure_evm_cli_tools check || true
-    # Offer to load/provide PRIVATE_KEY up front for auto submission
-    ensure_private_key optional || true
+    # Detect legacy key persistence by name only; never read the value
+    warn_legacy_private_key_file
     echo -e "${CYAN}Create 0G Validator (Mainnet / Aristotle)${RESET}"
     echo -e "${YELLOW}Requirements:${RESET} Ensure 0gchaind and 0g-geth are fully synced, and your EVM wallet holds at least 500 OG plus gas."
 
@@ -369,10 +383,21 @@ function create_validator() {
         --override-rpc-url \
         --rpc-dial-url "$OG_EVM_RPC"
 
-    # 3) Execute init tx via cast if available, else manual instruction
+    # 3) Execute init tx through Foundry's native interactive signer.
     echo -e "${CYAN}Initializing validator on Staking Contract...${RESET}"
-    if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+    if ! command -v cast >/dev/null 2>&1; then
+        echo -e "${YELLOW}'cast' is not available for interactive submission.${RESET}"
+        read -p "Install Foundry to enable interactive submission? (y/n, b=back): " _ans
+        case "${_ans,,}" in
+          y|yes) ensure_evm_cli_tools prompt || true ;;
+          b|back) echo -e "${YELLOW}Returning to menu...${RESET}"; menu; return 0 ;;
+          *) : ;;
+        esac
+    fi
+
+    if command -v cast >/dev/null 2>&1; then
         DESC_TUPLE=$(printf '("%s","%s","%s","%s","%s")' "$OG_MONIKER" "$IDENTITY" "$WEBSITE" "$EMAIL" "$DETAILS")
+        echo -e "${YELLOW}Foundry will prompt for the signer. Valley will not receive or persist the wallet private key.${RESET}"
         cast send "$STAKING_ADDRESS" \
             'createAndInitializeValidatorIfNecessary((string,string,string,string,string),uint32,uint96,bytes,bytes)' \
             "$DESC_TUPLE" \
@@ -382,38 +407,9 @@ function create_validator() {
             "$SIGNATURE" \
             --value 500ether \
             --rpc-url "$OG_EVM_RPC" \
-            --private-key "$PRIVATE_KEY"
+            --interactive
         echo -e "${GREEN}Submitted. Track on https://chainscan.0g.ai/${RESET}"
     else
-        # Offer to install tools for auto path
-        if [ -z "${PRIVATE_KEY:-}" ]; then
-            echo -e "${YELLOW}PRIVATE_KEY not set; proceeding with manual path.${RESET}"
-        elif ! command -v cast >/dev/null 2>&1; then
-            echo -e "${YELLOW}'cast' not available for auto submission.${RESET}"
-            read -p "Install Foundry to enable auto submission? (y/n, b=back): " _ans
-            case "${_ans,,}" in
-              y|yes)
-                ensure_evm_cli_tools prompt || true
-                if command -v cast >/dev/null 2>&1; then
-                  DESC_TUPLE=$(printf '("%s","%s","%s","%s","%s")' "$OG_MONIKER" "$IDENTITY" "$WEBSITE" "$EMAIL" "$DETAILS")
-                  cast send "$STAKING_ADDRESS" \
-                    'createAndInitializeValidatorIfNecessary((string,string,string,string,string),uint32,uint96,bytes,bytes)' \
-                    "$DESC_TUPLE" \
-                    "$COMM_PPM" \
-                    "$WITHDRAW_GWEI" \
-                    "$PUBKEY" \
-                    "$SIGNATURE" \
-                    --value 500ether \
-                    --rpc-url "$OG_EVM_RPC" \
-                    --private-key "$PRIVATE_KEY"
-                  echo -e "${GREEN}Submitted. Track on https://chainscan.0g.ai/${RESET}"
-                  echo -e "${YELLOW}Press Enter to return to menu...${RESET}"; read -r; menu; return 0
-                fi
-                ;;
-              b|back) echo -e "${YELLOW}Returning to menu...${RESET}"; menu; return 0 ;;
-              *) : ;;
-            esac
-        fi
         echo -e "${YELLOW}Manual path (ChainScan UI):${RESET}"
         echo "  1) Open: https://chainscan.0g.ai/address/$STAKING_ADDRESS (Contracts -> Write as Proxy)"
         echo "  2) Call: createAndInitializeValidatorIfNecessary"
@@ -440,9 +436,9 @@ function create_validator() {
 function delegate_to_validator() {
     set -euo pipefail
 
-    # Tools: Foundry (cast) optional for auto flow; PRIVATE_KEY optional
+    # Tools: Foundry (cast) optional for interactive signing; Valley never handles the signer key
     ensure_evm_cli_tools check || true
-    ensure_private_key optional || true
+    warn_legacy_private_key_file
 
     # 'bc' is not strictly required for delegation, but useful to have
     if ! command -v bc >/dev/null 2>&1; then
@@ -453,7 +449,7 @@ function delegate_to_validator() {
     fi
 
     echo -e "${CYAN}Delegate 0G to Validator${RESET}"
-    echo -e "${YELLOW}Requirements:${RESET} EVM wallet with 0G for stake + gas. For auto mode, both 'cast' and PRIVATE_KEY must be available."
+    echo -e "${YELLOW}Requirements:${RESET} EVM wallet with 0G for stake + gas. For interactive submission, 'cast' must be available; Foundry prompts for the signer itself."
 
     # Defaults (override via ENV)
     OG_EVM_RPC="${OG_EVM_RPC:-https://evmrpc.0g.ai}"
@@ -515,14 +511,7 @@ function delegate_to_validator() {
     if [[ "${AMOUNT_OG,,}" == "b" || "${AMOUNT_OG,,}" == "back" ]]; then menu; return; fi
     [[ -z "${AMOUNT_OG:-}" || ! "$AMOUNT_OG" =~ ^[0-9]+([.][0-9]+)?$ ]] && { echo -e "${RED}Invalid amount.${RESET}"; return 1; }
 
-    if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
-      set +e
-      DELEGATOR_ADDR=$(cast wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || true)
-      set -e
-    fi
-    if [ -z "${DELEGATOR_ADDR:-}" ]; then
-      read -p "Your EVM address (delegator, 0x...): " DELEGATOR_ADDR
-    fi
+    read -p "Your EVM address (delegator, 0x...): " DELEGATOR_ADDR
 
     read -p "Custom EVM RPC? [Enter to use ${OG_EVM_RPC}, b=back]: " RPC_INPUT
     if [[ "${RPC_INPUT,,}" == "b" || "${RPC_INPUT,,}" == "back" ]]; then menu; return; fi
@@ -540,14 +529,14 @@ function delegate_to_validator() {
       *) echo -e "${RED}Cancelled.${RESET}"; return 1 ;;
     esac
 
-    if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+    if command -v cast >/dev/null 2>&1 ; then
       echo -e "${CYAN}Sending delegation transaction via 'cast'...${RESET}"
       TX_OUT=$(
         cast send "$VALIDATOR_ADDR" \
           'delegate(address)' "$DELEGATOR_ADDR" \
           --value "${AMOUNT_OG}ether" \
           --rpc-url "$OG_EVM_RPC" \
-          --private-key "$PRIVATE_KEY" 2>&1 | tee /dev/tty
+          --interactive 2>&1 | tee /dev/tty
       )
       # Extract transaction hash (JSON or plain)
       TX_HASH=$(echo "$TX_OUT" | sed -n 's/.*"transactionHash"[[:space:]]*:[[:space:]]*"\(0x[0-9a-fA-F]\{64\}\)".*/\1/p' | head -n1)
@@ -587,9 +576,9 @@ function delegate_to_validator() {
 function undelegate_from_validator() {
   set -euo pipefail
 
-  # Tools & key (auto mode optional)
+  # Tools for interactive signing; Valley never handles the signer key
   ensure_evm_cli_tools prompt || true
-  ensure_private_key optional || true
+  warn_legacy_private_key_file
 
   # Ensure 'bc' for big-int math
   if ! command -v bc >/dev/null 2>&1; then
@@ -601,7 +590,7 @@ function undelegate_from_validator() {
   fi
 
   echo -e "${CYAN}Undelegate from Validator${RESET}"
-  echo -e "${YELLOW}Requirements:${RESET} A small amount of 0G for gas and the validator's withdrawal fee (in gwei). For auto mode, both 'cast' and PRIVATE_KEY must be available."
+  echo -e "${YELLOW}Requirements:${RESET} A small amount of 0G for gas and the validator's withdrawal fee (in gwei). For interactive submission, 'cast' must be available; Foundry prompts for the signer itself."
 
   # ===== Defaults (override via ENV) =====
   OG_EVM_RPC="${OG_EVM_RPC:-https://evmrpc.0g.ai}"
@@ -645,14 +634,7 @@ function undelegate_from_validator() {
   fi
 
   # ===== Delegator address =====
-  if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
-    set +e
-    DELEGATOR_ADDR=$(cast wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || true)
-    set -e
-  fi
-  if [ -z "${DELEGATOR_ADDR:-}" ]; then
-    read -rp "Your EVM address (delegator, 0x...): " DELEGATOR_ADDR
-  fi
+  read -rp "Your EVM address (delegator, 0x...): " DELEGATOR_ADDR
 
   # ===== Optional: custom RPC =====
   read -rp "Custom EVM RPC? [Enter to use ${OG_EVM_RPC}, b=back]: " RPC_INPUT
@@ -745,14 +727,14 @@ function undelegate_from_validator() {
   esac
 
   # ===== Send TX or print manual steps =====
-  if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+  if command -v cast >/dev/null 2>&1 ; then
     echo -e "${CYAN}Sending undelegation transaction via 'cast'...${RESET}"
     TX_OUT=$(
       cast send "$VALIDATOR_ADDR" \
         'undelegate(address,uint256)' "$WITHDRAW_ADDR" "$SHARES" \
         --value "$FEE_WEI" \
         --rpc-url "$OG_EVM_RPC" \
-        --private-key "$PRIVATE_KEY" 2>&1 | tee /dev/tty
+        --interactive 2>&1 | tee /dev/tty
     )
 
     # Extract transaction hash (JSON or plain)
@@ -977,18 +959,8 @@ function staking_rewards_percent_to_ppm() {
 
 function staking_rewards_operator_warning() {
   local operator_addr="$1"
-  local signer_addr=""
-
-  if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
-    set +e
-    signer_addr=$(cast wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || true)
-    set -e
-  fi
-
-  if [ -n "$signer_addr" ] && [ -n "$operator_addr" ] && [ "${signer_addr,,}" != "${operator_addr,,}" ]; then
-    echo -e "${YELLOW}WARNING: PRIVATE_KEY resolves to $signer_addr, but validator operator is $operator_addr.${RESET}"
-    echo -e "${YELLOW}Operator-only transactions will likely revert unless sent by the operator wallet.${RESET}"
-  fi
+  echo -e "${YELLOW}Operator-only action: when Foundry prompts for the signer, use the operator wallet ${operator_addr}.${RESET}"
+  echo -e "${YELLOW}Valley does not read, persist, or pass that wallet private key.${RESET}"
 }
 
 function staking_rewards_send_no_value() {
@@ -998,12 +970,12 @@ function staking_rewards_send_no_value() {
   shift 3
   local tx_out tx_hash
 
-  echo -e "${CYAN}Sending transaction via 'cast'...${RESET}"
+  echo -e "${CYAN}Sending transaction via 'cast' (Foundry will prompt for the signer securely)...${RESET}"
   TX_OUT=$(
     cast send "$validator_addr" \
       "$signature" "$@" \
       --rpc-url "$OG_EVM_RPC" \
-      --private-key "$PRIVATE_KEY" 2>&1 | tee /dev/tty
+      --interactive 2>&1 | tee /dev/tty
   )
   tx_out="$TX_OUT"
   tx_hash=$(staking_rewards_extract_tx_hash "$tx_out")
@@ -1019,7 +991,7 @@ function manage_staking_rewards() {
   set -euo pipefail
 
   ensure_evm_cli_tools prompt || true
-  ensure_private_key optional || true
+  warn_legacy_private_key_file
 
   if ! command -v cast >/dev/null 2>&1; then
     echo -e "${RED}'cast' is required for staking rewards management.${RESET}"
@@ -1120,19 +1092,8 @@ function manage_staking_rewards() {
         ;;
       2)
         local delegator_addr my_shares current_wei principal_og principal_wei reward_wei reward_og
-        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
-          set +e
-          delegator_addr=$(cast wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || true)
-          set -e
-        fi
-        if [ -z "${delegator_addr:-}" ]; then
-          read -rp "Delegator address (0x..., b=back): " delegator_addr
-          if [[ "${delegator_addr,,}" == "b" || "${delegator_addr,,}" == "back" ]]; then continue; fi
-        else
-          read -rp "Delegator address [Enter to use $delegator_addr, b=back]: " _delegator_input
-          if [[ "${_delegator_input,,}" == "b" || "${_delegator_input,,}" == "back" ]]; then continue; fi
-          delegator_addr="${_delegator_input:-$delegator_addr}"
-        fi
+        read -rp "Delegator address (0x..., b=back): " delegator_addr
+        if [[ "${delegator_addr,,}" == "b" || "${delegator_addr,,}" == "back" ]]; then continue; fi
 
         mapfile -t _DELEG_OUT < <(cast call "$VALIDATOR_ADDR" 'getDelegation(address)(address,uint256)' "$delegator_addr" --rpc-url "$OG_EVM_RPC")
         my_shares=$(echo "${_DELEG_OUT[-1]}" | awk '{print $1}' | tr -d '[:space:]')
@@ -1204,7 +1165,7 @@ function manage_staking_rewards() {
           *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
         esac
 
-        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+        if command -v cast >/dev/null 2>&1 ; then
           staking_rewards_send_no_value "$VALIDATOR_ADDR" 'withdrawCommission(address)' "Commission withdrawal" "$recipient"
           echo -e "${YELLOW}Commission withdrawal is QUEUED, not instant. It enters the withdrawal queue and completes after the network delay period. Check status via sub-option 6; run sub-option 7 if it is ready but unprocessed.${RESET}"
         else
@@ -1247,7 +1208,7 @@ function manage_staking_rewards() {
           *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
         esac
 
-        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+        if command -v cast >/dev/null 2>&1 ; then
           staking_rewards_send_no_value "$VALIDATOR_ADDR" 'withdrawTipFee(address)' "Tip fee withdrawal" "$recipient"
           echo -e "${GREEN}Tip fee withdrawal is instant and does not enter the withdrawal queue.${RESET}"
         else
@@ -1273,7 +1234,7 @@ function manage_staking_rewards() {
           *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
         esac
 
-        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+        if command -v cast >/dev/null 2>&1 ; then
           staking_rewards_send_no_value "$VALIDATOR_ADDR" 'distributeRewards()' "distributeRewards"
         else
           echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
@@ -1367,7 +1328,7 @@ function manage_staking_rewards() {
           *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
         esac
 
-        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+        if command -v cast >/dev/null 2>&1 ; then
           staking_rewards_send_no_value "$VALIDATOR_ADDR" 'processWithdrawQueue()' "processWithdrawQueue"
         else
           echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
@@ -1380,7 +1341,7 @@ function manage_staking_rewards() {
         if [[ "$failed_count" =~ ^[0-9]+$ ]] && [ "$failed_count" -gt 0 ]; then
           read -rp "Failed withdraw stack has $failed_count entries. Process failed stack too? (y/n): " ok
           if [[ "${ok,,}" == "y" || "${ok,,}" == "yes" ]]; then
-            if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+            if command -v cast >/dev/null 2>&1 ; then
               staking_rewards_send_no_value "$VALIDATOR_ADDR" 'processFailedWithdrawStack()' "processFailedWithdrawStack"
             else
               echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
@@ -1434,7 +1395,7 @@ function manage_staking_rewards() {
           *) echo -e "${RED}Cancelled.${RESET}"; staking_rewards_pause; continue ;;
         esac
 
-        if command -v cast >/dev/null 2>&1 && [ -n "${PRIVATE_KEY:-}" ]; then
+        if command -v cast >/dev/null 2>&1 ; then
           staking_rewards_send_no_value "$VALIDATOR_ADDR" 'setCommissionRate(uint32)' "Commission rate change" "$new_rate_ppm"
         else
           echo -e "${YELLOW}Manual path (Chainscan UI):${RESET}"
@@ -1742,94 +1703,14 @@ function ensure_evm_cli_tools() {
   return 0
 }
 
-# Helper to resolve default .env file location for 0gchaind
-function _resolve_og_env_file() {
-  local home_dir
-  home_dir="${OG_HOME:-$HOME/.0gchaind/0g-home/0gchaind-home}"
-  echo "$home_dir/.env"
-}
-
-# Ensure PRIVATE_KEY is available (optionally prompt the user)
-# Modes:
-#  - optional (default): try env var, then .env file, then ask user if they want to provide; returns 0 even if not set
-#  - required: same, but if still not available after prompts, return 1
-function ensure_private_key() {
-  local mode="${1:-optional}"
-  local env_file
-  env_file=$(_resolve_og_env_file)
-
-  # If already set, nothing to do
-  if [ -n "${PRIVATE_KEY:-}" ]; then
-    return 0
+# Valley no longer reads or persists EVM wallet private keys. Detect only the
+# legacy entry name so operators can migrate it without exposing its value.
+function warn_legacy_private_key_file() {
+  local env_file="${OG_HOME:-$HOME/.0gchaind/0g-home/0gchaind-home}/.env"
+  if [ -f "$env_file" ] && grep -qE '^PRIVATE_KEY=' "$env_file" 2>/dev/null; then
+    echo -e "${YELLOW}Legacy PRIVATE_KEY entry detected in $env_file.${RESET}"
+    echo -e "${YELLOW}Valley will not read or use it. After confirming another signer path, remove that legacy entry securely.${RESET}"
   fi
-
-  # Try to load from env file
-  if [ -f "$env_file" ]; then
-    local pk
-    pk=$(grep -E '^PRIVATE_KEY=' "$env_file" | head -n1 | sed -E 's/^PRIVATE_KEY=//')
-    if [ -n "$pk" ]; then
-      export PRIVATE_KEY="$pk"
-      return 0
-    fi
-  fi
-
-  # Interactive prompt
-  echo -e "${YELLOW}Auto-submit requires an EVM private key (hex).${RESET}"
-  read -p "Provide a private key now to enable auto submission? (y/n, b=back): " _ans
-  case "${_ans,,}" in
-    y|yes)
-      ;;
-    b|back)
-      [ "$mode" = "required" ] && return 1 || return 0 ;;
-    *)
-      [ "$mode" = "required" ] && { echo -e "${RED}PRIVATE_KEY is required for this action.${RESET}"; return 1; } || return 0 ;;
-  esac
-
-  read -rsp "Enter private key (0x-prefixed or 64-hex), or path to a .env file: " _input
-  echo
-  if [ -z "$_input" ]; then
-    [ "$mode" = "required" ] && { echo -e "${RED}PRIVATE_KEY not provided.${RESET}"; return 1; } || return 0
-  fi
-
-  if [ -f "$_input" ]; then
-    # Treat as env file path
-    local pk
-    pk=$(grep -E '^PRIVATE_KEY=' "$_input" | head -n1 | sed -E 's/^PRIVATE_KEY=//')
-    if [ -z "$pk" ]; then
-      echo -e "${RED}No PRIVATE_KEY entry found in $_input.${RESET}"
-      [ "$mode" = "required" ] && return 1 || return 0
-    fi
-    export PRIVATE_KEY="$pk"
-  else
-    # Treat as raw key
-    local re='^(0x)?[0-9a-fA-F]{64}$'
-    if [[ ! $_input =~ $re ]]; then
-      echo -e "${RED}Input does not look like a valid 64-hex private key.${RESET}"
-      [ "$mode" = "required" ] && return 1 || return 0
-    fi
-    export PRIVATE_KEY="$_input"
-
-    # Offer to persist to default env file
-    read -p "Save PRIVATE_KEY to $(dirname "$env_file")/.env for future use? (y/n, b=back): " _save
-    case "${_save,,}" in
-      y|yes)
-        mkdir -p "$(dirname "$env_file")"
-        {
-          # Remove existing PRIVATE_KEY entries to avoid duplicates
-          if [ -f "$env_file" ]; then
-            grep -v -E '^PRIVATE_KEY=' "$env_file" || true
-          fi
-          echo "PRIVATE_KEY=$PRIVATE_KEY"
-        } > "${env_file}.tmp" && mv "${env_file}.tmp" "$env_file"
-        chmod 600 "$env_file" 2>/dev/null || true
-        echo -e "${GREEN}Saved to $env_file (permissions set to 600).${RESET}"
-        ;;
-      b|back) : ;;
-      *) : ;;
-    esac
-  fi
-
-  return 0
 }
 
 function delete_validator_node() {
@@ -1951,7 +1832,7 @@ function migrate_geth_to_reth() {
     if [ -f "$script_dir/0g_geth_to_reth_migrate.sh" ]; then
         bash "$script_dir/0g_geth_to_reth_migrate.sh"
     else
-        bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_geth_to_reth_migrate.sh)
+        run_repository_script resources/0g_geth_to_reth_migrate.sh
     fi
     menu
 }
@@ -1973,7 +1854,7 @@ function rollback_align_height() {
     if [ -f "$script_dir/0g_rollback_align.sh" ]; then
         bash "$script_dir/0g_rollback_align.sh"
     else
-        bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_rollback_align.sh)
+        run_repository_script resources/0g_rollback_align.sh
     fi
     menu
 }
@@ -1993,7 +1874,7 @@ function schedule_validator_node() {
     echo -e "${GREEN}- List or remove:${RESET} scheduled jobs from the at queue"
     echo -e "\n${YELLOW}Press Enter to continue...${RESET}"
     read -r
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_node_schedule.sh)
+    run_repository_script resources/0g_node_schedule.sh
     menu
 }
 
@@ -2064,12 +1945,12 @@ function add_peers() {
 
 # Storage Node Functions
 function deploy_storage_node() {
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_storage_node_install.sh)
+    run_repository_script resources/0g_storage_node_install.sh
     menu
 }
 
 function update_storage_node() {
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_storage_node_update.sh)
+    run_repository_script resources/0g_storage_node_update.sh
     menu
 }
 
@@ -2120,7 +2001,7 @@ function apply_storage_node_snapshot() {
 
                 echo -e "\n\033[0;32mInitializing Standard Contract snapshot...\033[0m"
                 echo -e "\033[0;33mThis may take several minutes...\033[0m"
-                bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_turbo_zgs_node_snapshot.sh)
+                run_repository_script resources/0g_turbo_zgs_node_snapshot.sh
 
                 echo -e "\n\033[0;32m▓▒░ Snapshot Applied Successfully ░▒▓\033[0m"
                 echo -e "\033[0;33mYour node is now syncing data_db - this will take several hours"
@@ -2155,7 +2036,7 @@ function delete_storage_node() {
 }
 
 function change_storage_node() {
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_storage_node_change.sh)
+    run_repository_script resources/0g_storage_node_change.sh
     menu
 }
 
@@ -2276,7 +2157,7 @@ function restart_storage_node() {
 
 # Storage KV Functions
 function deploy_storage_kv() {
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_storage_kv_install.sh)
+    run_repository_script resources/0g_storage_kv_install.sh
     menu
 }
 
@@ -2295,7 +2176,7 @@ function delete_storage_kv() {
 }
 
 function update_storage_kv() {
-    bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_storage_kv_update.sh)
+    run_repository_script resources/0g_storage_kv_update.sh
     menu
 }
 
@@ -2312,7 +2193,7 @@ function restart_storage_kv() {
 
 # AI Alignment Node Functions
 function run_ai_alignment_node() {
-     bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/0g_ai_alignment_node_install.sh)
+     run_repository_script resources/0g_ai_alignment_node_install.sh
      menu
 }
 
@@ -2350,59 +2231,12 @@ function approve_ai_alignment_node() {
 
     if [ ! -x "$BIN_PATH" ]; then
         echo -e "${YELLOW}Alignment node binary not found at ${BIN_PATH}.${RESET}"
-        echo -e "Install it first via: Run AI Alignment Node option."
-        read -p "Press Enter to go back..." _
-        menu
-        return
+        echo -e "Install/stage it first via: Run AI Alignment Node option."
     fi
-
-    if [ -f "$APP_DIR/.env" ]; then
-        source "$APP_DIR/.env"
-        DEFAULT_KEY="$ZG_ALIGNMENT_NODE_SERVICE_PRIVATEKEY"
-    fi
-
-    read -rsp "Enter private key (no 0x). Leave blank to use .env: " INPUT_KEY
-    echo
-    if [ -z "$INPUT_KEY" ]; then
-        INPUT_KEY="$DEFAULT_KEY"
-    fi
-    if [ -z "$INPUT_KEY" ]; then
-        echo -e "${RED}Private key is required.${RESET}"
-        return
-    fi
-
-    read -p "Enter destination Node Operator address (0x... for --destNode): " DESTINATION_ADDR
-    DESTINATION_ADDR="${DESTINATION_ADDR//[[:space:]]/}"
-    if [ -z "$DESTINATION_ADDR" ]; then
-        echo -e "${RED}Destination Node Operator address is required.${RESET}"
-        return
-    fi
-    if ! [[ "$DESTINATION_ADDR" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
-        echo -e "${RED}Invalid address format. Expected 0x followed by 40 hex chars.${RESET}"
-        return
-    fi
-
-    read -p "Enter comma-separated NFT token IDs to approve: (e.g: ID1,ID2,ID3,....)" TOKEN_IDS
-    if [ -z "$TOKEN_IDS" ]; then
-        echo -e "${RED}At least one token id is required.${RESET}"
-        return
-    fi
-
-    read -p "RPC endpoint [default https://evmrpc.0g.ai]: " RPC
-    RPC=${RPC:-https://evmrpc.0g.ai}
-    CHAIN_ID=16661
-
-    echo -e "${GREEN}Executing approval command...${RESET}"
-    (cd "$APP_DIR" && ./"$(basename "$BIN_PATH")" approve \
-        --key "$INPUT_KEY" \
-        --tokenIds "$TOKEN_IDS" \
-        --destNode "$DESTINATION_ADDR" \
-        --chain-id "$CHAIN_ID" \
-        --rpc "$RPC" \
-        --contract 0x7BDc2aECC3CDaF0ce5a975adeA1C8d84Fd9Be3D9 \
-        --mainnet)
-
-    echo -e "${GREEN}Approval tx submitted. Verify on-chain explorers.${RESET}"
+    echo -e "${YELLOW}Automated Alignment approval is disabled by the Valley private-key boundary.${RESET}"
+    echo "Upstream Alignment v1.0.0 exposes transaction signing through a raw --key argument."
+    echo "Valley will not collect a wallet private key or place it in process arguments."
+    echo "Review the official upstream procedure and execute the signing step manually if you accept that upstream limitation."
     read -p "Press Enter to return to menu..." _
     menu
 }

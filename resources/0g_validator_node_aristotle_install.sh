@@ -14,6 +14,23 @@ echo "$LOGO"
 # Colours
 GREEN="\e[32m"; YELLOW="\e[33m"; CYAN="\e[36m"; RESET="\e[0m"
 
+# VERSIONS.json is the authority for the reviewed validator bundle artifact.
+command -v jq >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y jq; }
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
+[ -r "$MANIFEST_LIB" ] || { echo "Valley manifest loader not found: $MANIFEST_LIB" >&2; exit 2; }
+# shellcheck source=resources/valley_manifest.sh
+source "$MANIFEST_LIB"
+valley_manifest_init
+ARISTOTLE_VERSION=$(valley_manifest_get '.components.validator.bundle.version_current')
+ARISTOTLE_RELEASE_REF=$(valley_manifest_get '.components.validator.bundle.release_ref')
+ARISTOTLE_REPO=$(valley_manifest_get '.components.validator.bundle.release_repo')
+ARISTOTLE_ARTIFACT=$(valley_manifest_get '.components.validator.bundle.release_artifact')
+ARISTOTLE_SHA256=$(valley_manifest_get '.components.validator.bundle.release_artifact_sha256')
+valley_require_sha256 "$ARISTOTLE_SHA256" || { echo "Invalid Aristotle digest in VERSIONS.json." >&2; exit 2; }
+ARISTOTLE_URL="${ARISTOTLE_REPO}/releases/download/${ARISTOTLE_RELEASE_REF}/${ARISTOTLE_ARTIFACT}"
+ARISTOTLE_EXTRACT_DIR="aristotle-${ARISTOTLE_VERSION}"
+
 # ===== CHOOSE NODE TYPE =====
 while true; do
   read -p "Deploy type? (validator/rpc): " NODE_TYPE
@@ -180,13 +197,15 @@ if [[ "$SETUP_UFW" =~ ^[Yy]$ ]]; then
     sudo ufw status verbose
 fi
 
-# ==== DOWNLOAD ARISTOTLE v1.0.6 ====
-cd $HOME
+# ==== DOWNLOAD REVIEWED ARISTOTLE BUNDLE ====
+cd "$HOME"
 sudo rm -rf aristotle
-wget -q https://github.com/0gfoundation/0gchain-Aristotle/releases/download/v1.0.6/aristotle-v1.0.6.tar.gz -O aristotle-v1.0.6.tar.gz
-tar -xzvf aristotle-v1.0.6.tar.gz
-mv aristotle-v1.0.6 aristotle
-sudo rm aristotle-v1.0.6.tar.gz
+curl -fL --retry 3 "$ARISTOTLE_URL" -o "$ARISTOTLE_ARTIFACT"
+printf '%s  %s\n' "$ARISTOTLE_SHA256" "$ARISTOTLE_ARTIFACT" | sha256sum --check
+tar -xzvf "$ARISTOTLE_ARTIFACT"
+[ -d "$ARISTOTLE_EXTRACT_DIR" ] || { echo "Verified Aristotle archive extracted an unexpected directory." >&2; exit 1; }
+mv "$ARISTOTLE_EXTRACT_DIR" aristotle
+rm -f "$ARISTOTLE_ARTIFACT"
 
 # ==== MAKE BINARIES EXECUTABLE ====
 sudo chmod +x $HOME/aristotle/bin/geth $HOME/aristotle/bin/reth $HOME/aristotle/bin/0gchaind 2>/dev/null || true

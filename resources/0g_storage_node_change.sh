@@ -1,131 +1,90 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Function to query the latest block number from a JSON-RPC endpoint
-query_block_number() {
-    local endpoint=$1
-    local block_number=$(curl -s -X POST "$endpoint" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
-    echo "$block_number"
+CONFIG_FILE="${ZGS_CONFIG_FILE:-$HOME/0g-storage-node/run/config-mainnet.toml}"
+SERVICE_NAME="zgs"
+EXPECTED_CHAIN_ID="16661"
+
+rpc_result() {
+    local endpoint=$1 method=$2
+    curl -fsS --connect-timeout 4 --max-time 8 -X POST "$endpoint" \
+        -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":[],\"id\":1}" 2>/dev/null |
+        jq -r '.result // empty' 2>/dev/null || true
 }
-
-# Function to prompt user to choose JSON-RPC endpoint
+hex_to_dec() {
+    local value=$1
+    if [[ "$value" =~ ^0x[0-9a-fA-F]+$ ]]; then printf '%d\n' "$((16#${value#0x}))";
+    elif [[ "$value" =~ ^[0-9]+$ ]]; then printf '%s\n' "$value"; fi
+}
+require_rpc_chain() {
+    local endpoint=$1 chain
+    chain=$(hex_to_dec "$(rpc_result "$endpoint" eth_chainId)")
+    [ "$chain" = "$EXPECTED_CHAIN_ID" ] || { echo "RPC rejected: expected chain $EXPECTED_CHAIN_ID, got ${chain:-unavailable}." >&2; return 1; }
+}
 choose_json_rpc_endpoint() {
-    echo "Choose your JSON-RPC endpoint:"
-    echo "1. Enter your own JSON-RPC endpoint"
-    echo "2. Use a public JSON-RPC endpoint"
-    read -p "Enter your choice (1/2): " JSON_RPC_CHOICE
-
-    if [ "$JSON_RPC_CHOICE" == "1" ]; then
-        read -p "Enter your JSON-RPC endpoint (leave empty to skip): " BLOCKCHAIN_RPC_ENDPOINT
-        if [ -n "$BLOCKCHAIN_RPC_ENDPOINT" ]; then
-            BLOCK_NUMBER=$(query_block_number "$BLOCKCHAIN_RPC_ENDPOINT")
-            echo "Latest block number for $BLOCKCHAIN_RPC_ENDPOINT: $BLOCK_NUMBER"
-            read -p "Do you want to continue with this RPC endpoint? (yes/no): " CONTINUE_CHOICE
-            if [ "$CONTINUE_CHOICE" != "yes" ]; then
-                choose_json_rpc_endpoint
-            fi
-        else
-            BLOCKCHAIN_RPC_ENDPOINT=""
-        fi
-    elif [ "$JSON_RPC_CHOICE" == "2" ]; then
-        echo "Available public JSON-RPC endpoints:"
-        echo "1. https://lightnode-json-rpc-mainnet-0g.grandvalleys.com [$(query_block_number https://lightnode-json-rpc-mainnet-0g.grandvalleys.com)]"
-        echo "2. https://evmrpc.0g.ai [$(query_block_number https://evmrpc.0g.ai)]"
-        read -p "Enter the number of your chosen public JSON-RPC endpoint: " PUBLIC_RPC_CHOICE
-
-        if [ -n "$PUBLIC_RPC_CHOICE" ]; then
-            case $PUBLIC_RPC_CHOICE in
-                1) BLOCKCHAIN_RPC_ENDPOINT="https://lightnode-json-rpc-mainnet-0g.grandvalleys.com";;
-                2) BLOCKCHAIN_RPC_ENDPOINT="https://evmrpc.0g.ai";;
-                3) BLOCKCHAIN_RPC_ENDPOINT="https://rpc.ankr.com/0g_newton";;
-                4) BLOCKCHAIN_RPC_ENDPOINT="https://0g-json-rpc-public.originstake.com";;
-                5) BLOCKCHAIN_RPC_ENDPOINT="https://og-jsonrpc.itrocket.net:443";;
-                6) BLOCKCHAIN_RPC_ENDPOINT="https://0g-evmrpc-zstake.xyz";;
-                7) BLOCKCHAIN_RPC_ENDPOINT="https://zerog-json-rpc.contributiondao.com";;
-                8) BLOCKCHAIN_RPC_ENDPOINT="https://16600.rpc.thirdweb.com";;
-                *) echo "Invalid choice. Exiting."; exit 1;;
-            esac
-        else
-            BLOCKCHAIN_RPC_ENDPOINT=""
-        fi
-    else
-        echo "Invalid choice. Exiting."; exit 1
-    fi
+    local choice public_choice continue_choice
+    while true; do
+        echo "Choose your JSON-RPC endpoint:"
+        echo "1. Enter your own JSON-RPC endpoint"
+        echo "2. Use a public JSON-RPC endpoint"
+        read -r -p "Enter your choice (1/2): " choice
+        case "$choice" in
+            1)
+                read -r -p "Enter your JSON-RPC endpoint: " BLOCKCHAIN_RPC_ENDPOINT
+                require_rpc_chain "$BLOCKCHAIN_RPC_ENDPOINT" || continue
+                read -r -p "Do you want to continue with this RPC endpoint? (yes/no): " continue_choice
+                [ "$continue_choice" = "yes" ] && return 0
+                ;;
+            2)
+                echo "1. https://lightnode-json-rpc-mainnet-0g.grandvalleys.com"
+                echo "2. https://evmrpc.0g.ai"
+                read -r -p "Enter the number of your chosen public JSON-RPC endpoint: " public_choice
+                case "$public_choice" in
+                    1) BLOCKCHAIN_RPC_ENDPOINT="https://lightnode-json-rpc-mainnet-0g.grandvalleys.com" ;;
+                    2) BLOCKCHAIN_RPC_ENDPOINT="https://evmrpc.0g.ai" ;;
+                    *) echo "Invalid choice."; continue ;;
+                esac
+                require_rpc_chain "$BLOCKCHAIN_RPC_ENDPOINT" && return 0
+                ;;
+            *) echo "Invalid choice." ;;
+        esac
+    done
 }
 
-# Function to prompt user to change miner key
-change_miner_key() {
-    read -p "Enter your private key (leave empty to skip): " PRIVATE_KEY
-}
+[ -f "$CONFIG_FILE" ] || { echo "Storage config not found: $CONFIG_FILE" >&2; exit 1; }
+echo "Choose what you want to change:"
+echo "1. Change RPC endpoint"
+echo "2. Change miner key"
+read -r -p "Enter your choice (1/2): " USER_CHOICE
+case "$USER_CHOICE" in
+    1) choose_json_rpc_endpoint ;;
+    2)
+        echo "Miner-key changes are intentionally not automated."
+        echo "Upstream Storage requires raw key material in config/argv; Valley will not collect or rewrite it."
+        echo "Review the official upstream procedure and make the operator-owned change manually if you accept that limitation."
+        exit 0
+        ;;
+    *) echo "Invalid choice. Exiting." >&2; exit 1 ;;
+esac
 
-# Main function to handle user choices
-main() {
-    echo "Choose what you want to change:"
-    echo "1. Change RPC endpoint"
-    echo "2. Change miner key"
-    read -p "Enter your choice (1/2): " USER_CHOICE
+backup="${CONFIG_FILE}.valley-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+cp "$CONFIG_FILE" "$backup"
+chmod 600 "$backup"
+candidate=$(mktemp)
+trap 'rm -f "$candidate"' EXIT
+cp "$CONFIG_FILE" "$candidate"
+chmod 600 "$candidate"
+sed -i -E "s|^[[:space:]]*blockchain_rpc_endpoint[[:space:]]*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|" "$candidate"
+grep -Fq "blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"" "$candidate" || { echo "Candidate validation failed." >&2; exit 1; }
 
-    if [ "$USER_CHOICE" == "1" ]; then
-        choose_json_rpc_endpoint
-        read -p "Do you want to change the miner key as well? (yes/no): " CHANGE_MINER_KEY
-        if [ "$CHANGE_MINER_KEY" == "yes" ]; then
-            change_miner_key
-        fi
-    elif [ "$USER_CHOICE" == "2" ]; then
-        change_miner_key
-        read -p "Do you want to change the RPC endpoint as well? (yes/no): " CHANGE_RPC
-        if [ "$CHANGE_RPC" == "yes" ]; then
-            choose_json_rpc_endpoint
-        fi
-    else
-        echo "Invalid choice. Exiting."; exit 1
-    fi
-
-    # Stop the storage node
-    sudo systemctl stop zgs
-
-    # Update config file
-    CONFIG_FILE="$HOME/0g-storage-node/run/config-mainnet.toml"
-
-    # Read existing values from the config file
-    EXISTING_MINER_KEY=$(grep -oP 'miner_key\s*=\s*"\K[^"]+' "$CONFIG_FILE")
-    EXISTING_RPC_ENDPOINT=$(grep -oP 'blockchain_rpc_endpoint\s*=\s*"\K[^"]+' "$CONFIG_FILE")
-
-    # Update only if new values are provided
-    if [ -n "$PRIVATE_KEY" ]; then
-        sed -i "s|^\s*#\?\s*miner_key\s*=.*|miner_key = \"$PRIVATE_KEY\"|" "$CONFIG_FILE"
-    else
-        PRIVATE_KEY=$EXISTING_MINER_KEY
-    fi
-
-    if [ -n "$BLOCKCHAIN_RPC_ENDPOINT" ]; then
-        sed -i "s|^\s*#\?\s*blockchain_rpc_endpoint\s*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|" "$CONFIG_FILE"
-    else
-        BLOCKCHAIN_RPC_ENDPOINT=$EXISTING_RPC_ENDPOINT
-    fi
-
-    sed -i "
-    s|^\s*#\?\s*listen_address\s*=.*|listen_address = \"0.0.0.0:5678\"|
-    s|^\s*#\?\s*listen_address_admin\s*=.*|listen_address_admin = \"0.0.0.0:5679\"|
-    s|^\s*#\?\s*rpc_enabled\s*=.*|rpc_enabled = true|
-    " "$CONFIG_FILE"
-
-    # Restart the node
-    sudo systemctl daemon-reload && \
-    sudo systemctl restart zgs && \
-    sudo systemctl status zgs
-
-    # Show logs
-    echo "Full logs command: tail -f ~/0g-storage-node/run/log/zgs.log.$(TZ=UTC date +%Y-%m-%d)"
-
-    # Confirmation message for update completion
-    if systemctl is-active --quiet zgs; then
-        echo "Storage Node update and services restarted successfully!"
-    else
-        echo "Storage Node update failed. Please check the logs for more information."
-    fi
-
-    echo "Let's Buidl 0G Together"
-}
-
-# Execute the main function
-main
+sudo systemctl stop "$SERVICE_NAME"
+install -m 0600 "$candidate" "$CONFIG_FILE"
+if ! sudo systemctl restart "$SERVICE_NAME" || ! systemctl is-active --quiet "$SERVICE_NAME"; then
+    echo "Storage service failed after RPC change; restoring previous config." >&2
+    cp "$backup" "$CONFIG_FILE"
+    sudo systemctl restart "$SERVICE_NAME" || true
+    exit 1
+fi
+echo "Storage RPC endpoint updated. Existing miner key value was not read or rewritten."
+echo "Backup retained at: $backup"
