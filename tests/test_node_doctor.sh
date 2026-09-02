@@ -11,19 +11,36 @@ grep -Fq 'p) run_node_doctor' "$ROOT/resources/valleyof0G.sh"
 grep -Fq 'p. Run Node Doctor (read-only health/readiness checks)' "$ROOT/resources/valleyof0G.sh"
 test -x "$DOCTOR"
 
+if grep -Eq '\b(26657|26545|26551)\b' "$DOCTOR"; then
+    echo "Node Doctor contains a shipped port default" >&2
+    exit 1
+fi
+
 mkdir -p "$TMP/bin" "$TMP/data" "$TMP/.0gchaind/0g-home/0gchaind-home/config" "$TMP/.0gchaind/0g-home/reth-home"
 printf '%s\n' 'laddr = "tcp://127.0.0.1:27657"' > "$TMP/.0gchaind/0g-home/0gchaind-home/config/config.toml"
 printf '%s\n' 'http.port = 27545' 'authrpc.port = 27551' > "$TMP/.0gchaind/0g-home/reth-home/reth.toml"
 printf '%s\n' 'HTTPPort = 27545' 'AuthPort = 27551' > "$TMP/.0gchaind/geth-config.toml"
 printf '%s\n' 'laddr = "tcp://127.0.0.1:28657"' > "$TMP/cl-28.toml"
 printf '%s\n' 'http.port = 28545' 'authrpc.port = 28551' > "$TMP/reth-28.toml"
+printf '%s\n' '[http]' 'port = 29545' '[authrpc]' 'port = 29551' > "$TMP/reth-sections.toml"
+printf '%s\n' 'laddr = "tcp://127.0.0.1:29657"' > "$TMP/cl-29.toml"
 
 cat > "$TMP/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == show && "${2:-}" == -p && "${3:-}" == ExecStart ]]; then
+    if [[ "${DOCTOR_PORT_FIXTURE:-}" == no-config ]]; then
+        printf '\n'
+        exit 0
+    fi
     case "${5:-}" in
-        0gchaind) printf 'ExecStart=/home/test/0gchaind --rpc.laddr tcp://127.0.0.1:27657\n' ;;
+        0gchaind)
+            if [[ "${DOCTOR_PORT_FIXTURE:-}" == config || "${DOCTOR_PORT_FIXTURE:-}" == sections ]]; then
+                printf 'ExecStart=/home/test/0gchaind --home %s/.0gchaind/0g-home/0gchaind-home\n' "$HOME"
+            else
+                printf 'ExecStart=/home/test/0gchaind --rpc.laddr tcp://127.0.0.1:27657\n'
+            fi
+            ;;
         0g-reth) printf 'ExecStart=/home/test/0g-reth --config %s/.0gchaind/0g-home/reth-home/reth.toml\n' "$HOME" ;;
         0g-geth) printf 'ExecStart=/home/test/0g-geth --config %s/.0gchaind/geth-config.toml\n' "$HOME" ;;
         *) printf '\n' ;;
@@ -96,6 +113,8 @@ EOF
 cat > "$TMP/bin/ss" <<'EOF'
 #!/usr/bin/env bash
 prefix=${DOCTOR_PORT_PREFIX:-27}
+[[ "${DOCTOR_PORT_FIXTURE:-}" == config ]] && prefix=28
+[[ "${DOCTOR_PORT_FIXTURE:-}" == sections ]] && prefix=29
 if [[ "${DOCTOR_FIXTURE:-healthy}" == public ]]; then
   printf '%s\n' \
     "LISTEN 0 128 127.0.0.1:${prefix}657 0.0.0.0:*" \
@@ -142,7 +161,7 @@ echo "$healthy_json" | jq -e '
     (.components.consensus.rpc_port == 27657) and
     (.components.execution.rpc_port == 27545) and
     (.joint.engine_api_port == 27551) and
-    .port_sources == {consensus_rpc:"config",execution_rpc:"config",engine_api:"config"} and
+    .port_sources == {consensus_rpc:"service",execution_rpc:"config",engine_api:"config"} and
     (any(.checks[]; .id == "engine_listener" and .critical == true))
 ' >/dev/null
 
@@ -152,8 +171,21 @@ echo "$geth_json" | jq -e '.overall == "ready" and .components.execution.service
 hex_json=$(env "${common_env[@]}" DOCTOR_FIXTURE=hexletters "$DOCTOR" --json)
 echo "$hex_json" | jq -e '.overall == "ready" and .components.execution.head == 6844 and .joint.head_gap == 0' >/dev/null
 
-prefix_json=$(env "${common_env[@]}" DOCTOR_PORT_PREFIX=28 DOCTOR_CL_CONFIG="$TMP/cl-28.toml" DOCTOR_RETH_CONFIG="$TMP/reth-28.toml" "$DOCTOR" --json)
-echo "$prefix_json" | jq -e '.overall == "ready" and .joint.engine_api_port == 28551' >/dev/null
+config_json=$(env "${common_env[@]}" DOCTOR_PORT_FIXTURE=config DOCTOR_CL_CONFIG="$TMP/cl-28.toml" DOCTOR_RETH_CONFIG="$TMP/reth-28.toml" "$DOCTOR" --json)
+echo "$config_json" | jq -e '.overall == "ready" and .joint.engine_api_port == 28551 and .port_sources == {consensus_rpc:"config",execution_rpc:"config",engine_api:"config"}' >/dev/null
+
+sections_json=$(env "${common_env[@]}" DOCTOR_PORT_FIXTURE=sections DOCTOR_CL_CONFIG="$TMP/cl-29.toml" DOCTOR_RETH_CONFIG="$TMP/reth-sections.toml" "$DOCTOR" --json)
+echo "$sections_json" | jq -e '.overall == "ready" and .components.consensus.rpc_port == 29657 and .components.execution.rpc_port == 29545 and .joint.engine_api_port == 29551' >/dev/null
+
+unknown_ports=$(env "${common_env[@]}" DOCTOR_PORT_FIXTURE=no-config OG_PORT=99 DOCTOR_PORT_PREFIX=99 DOCTOR_CL_CONFIG="$TMP/missing-cl.toml" DOCTOR_RETH_CONFIG="$TMP/missing-reth.toml" "$DOCTOR" --json || true)
+echo "$unknown_ports" | jq -e '
+    .ready == false and
+    .components.consensus.rpc_port == null and
+    .components.execution.rpc_port == null and
+    .joint.engine_api_port == null and
+    .port_sources == {consensus_rpc:"unknown",execution_rpc:"unknown",engine_api:"unknown"} and
+    any(.checks[]; .id == "engine_listener" and .status == "warn")
+' >/dev/null
 
 public_json=$(env "${common_env[@]}" DOCTOR_FIXTURE=public "$DOCTOR" --json)
 echo "$public_json" | jq -e 'any(.checks[]; .id == "rpc_exposure" and .status == "warn" and .critical == false)' >/dev/null

@@ -17,10 +17,10 @@ HEAD_LAG_LIMIT="${DOCTOR_HEAD_LAG_LIMIT:-5}"
 MIN_FREE_PERCENT="${DOCTOR_MIN_FREE_PERCENT:-10}"
 MAX_HEAD_AGE_SECONDS="${DOCTOR_MAX_HEAD_AGE_SECONDS:-300}"
 EXPECTED_CL_NETWORK="${DOCTOR_EXPECTED_CL_NETWORK:-}"
-CL_CONFIG="${DOCTOR_CL_CONFIG:-${HOME}/.0gchaind/0g-home/0gchaind-home/config/config.toml}"
+CL_CONFIG="${DOCTOR_CL_CONFIG:-}"
 
-# Port discovery is configuration-first. OG_PORT is only a legacy prefix
-# fallback; it must never override a port declared by the live service/config.
+# Port discovery is configuration-only. Never infer a port from a shipped
+# default or from another port; inspect the active service/config instead.
 SYSTEMCTL="${DOCTOR_SYSTEMCTL_BIN:-systemctl}"
 CURL="${DOCTOR_CURL_BIN:-curl}"
 SS="${DOCTOR_SS_BIN:-ss}"
@@ -75,11 +75,71 @@ config_path_from_exec() {
     fi
 }
 
+home_path_from_exec() {
+    local command_line=$1 path
+    if [[ "$command_line" =~ --home(=|[[:space:]])([^[:space:];}]+) ]]; then
+        path=${BASH_REMATCH[2]}
+        path=${path#\"}
+        path=${path%\"}
+        printf '%s/config/config.toml' "$path"
+    fi
+}
+
+port_from_endpoint_arg() {
+    local command_line=$1 flag=$2 endpoint
+    endpoint=$(grep -oE -- "${flag}(=|[[:space:]])[^[:space:];}]+" <<<"$command_line" | head -n 1 || true)
+    [[ "$endpoint" =~ :([0-9]+)(/|$) ]] && printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+}
+
+port_from_url() {
+    local url=$1
+    [[ "$url" =~ :([0-9]+)(/|$) ]] && printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+}
+
+port_from_toml_section() {
+    local file=$1 section=$2 line in_section=false
+    [[ -r "$file" ]] || return 0
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*\[([^]]+)\] ]]; then
+            [[ "${BASH_REMATCH[1]}" == "$section" ]] && in_section=true || in_section=false
+        elif [[ "$in_section" == true && "$line" =~ ^[[:space:]]*port[[:space:]]*=[[:space:]]*\"?([0-9]+) ]]; then
+            printf '%s' "${BASH_REMATCH[1]}"
+            return
+        fi
+    done < "$file"
+}
+
+port_from_toml_url_key() {
+    local file=$1 key=$2 line url
+    [[ -r "$file" ]] || return 0
+    while IFS= read -r line; do
+        if grep -Eq "^[[:space:]]*${key}[[:space:]]*=" <<<"$line"; then
+            url=$(sed -nE 's/^[^\"]*"([^\"]+)".*$/\1/p' <<<"$line")
+            port_from_url "$url"
+            return
+        fi
+    done < "$file"
+}
+
+CL_EXEC_START=$(service_exec_start "$CL_SERVICE")
+if [[ -z "$CL_CONFIG" ]]; then
+    CL_CONFIG=$(config_path_from_exec "$CL_EXEC_START")
+    [[ -z "$CL_CONFIG" ]] && CL_CONFIG=$(home_path_from_exec "$CL_EXEC_START")
+    [[ -z "$CL_CONFIG" ]] && CL_CONFIG="${HOME}/.0gchaind/0g-home/0gchaind-home/config/config.toml"
+fi
 CL_RPC_PORT="${DOCTOR_CL_RPC_PORT:-}"
-CL_PORT_SOURCE=override
-if [[ -z "$CL_RPC_PORT" && -r "$CL_CONFIG" ]]; then
-    CL_RPC_PORT=$(grep -oP '^[[:space:]]*laddr[[:space:]]*=[[:space:]]*"tcp://(?:[^:]+):\K[0-9]+' "$CL_CONFIG" 2>/dev/null | head -n 1 || true)
-    [[ -n "$CL_RPC_PORT" ]] && CL_PORT_SOURCE=config
+CL_PORT_SOURCE=unknown
+if [[ -n "${DOCTOR_CL_RPC_PORT:-}" ]]; then
+    CL_PORT_SOURCE=override
+else
+    CL_RPC_PORT=$(port_from_endpoint_arg "$CL_EXEC_START" '--rpc.laddr')
+    [[ -n "$CL_RPC_PORT" ]] && CL_PORT_SOURCE=service
+    if [[ -z "$CL_RPC_PORT" && -r "$CL_CONFIG" ]]; then
+        CL_RPC_PORT=$(grep -oP '^[[:space:]]*laddr[[:space:]]*=[[:space:]]*"tcp://[^\"]*:\K[0-9]+' "$CL_CONFIG" 2>/dev/null | head -n 1 || true)
+        [[ -n "$CL_RPC_PORT" ]] && CL_PORT_SOURCE=config
+    fi
 fi
 
 GETH_EXEC_START=$(service_exec_start "$GETH_SERVICE")
@@ -91,11 +151,9 @@ active_el_config=''
 if [[ "$geth_state" == true && "$reth_state" != true ]]; then
     active_el_exec=$GETH_EXEC_START
     active_el_config="${DOCTOR_GETH_CONFIG:-$(config_path_from_exec "$GETH_EXEC_START")}"
-    active_el_config="${active_el_config:-${DATA_DIR}/geth-config.toml}"
 elif [[ "$reth_state" == true && "$geth_state" != true ]]; then
     active_el_exec=$RETH_EXEC_START
     active_el_config="${DOCTOR_RETH_CONFIG:-$(config_path_from_exec "$RETH_EXEC_START")}"
-    active_el_config="${active_el_config:-${DATA_DIR}/0g-home/reth-home/reth.toml}"
 fi
 
 EL_RPC_PORT="${DOCTOR_EL_RPC_PORT:-}"
@@ -112,6 +170,7 @@ else
         [[ -n "$EL_RPC_PORT" ]] && EL_PORT_SOURCE=config
     elif [[ -z "$EL_RPC_PORT" ]]; then
         EL_RPC_PORT=$(port_from_toml "$active_el_config" 'http\.port')
+        [[ -z "$EL_RPC_PORT" ]] && EL_RPC_PORT=$(port_from_toml_section "$active_el_config" http)
         [[ -n "$EL_RPC_PORT" ]] && EL_PORT_SOURCE=config
     fi
 fi
@@ -125,26 +184,20 @@ else
         [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=config
     elif [[ -z "$ENGINE_PORT" ]]; then
         ENGINE_PORT=$(port_from_toml "$active_el_config" 'authrpc\.port')
+        [[ -z "$ENGINE_PORT" ]] && ENGINE_PORT=$(port_from_toml_section "$active_el_config" authrpc)
         [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=config
     fi
 fi
 
-# Legacy environment fallback only when no active service/config declares a
-# value. This keeps old installs diagnosable without masking configuration.
-PORT_PREFIX="${DOCTOR_PORT_PREFIX:-}"
-if [[ -z "$PORT_PREFIX" && "$CL_RPC_PORT" =~ ^([0-9]+)657$ ]]; then
-    PORT_PREFIX="${BASH_REMATCH[1]}"
+# The CL may carry the Engine API dial address while the EL service exposes no
+# explicit authrpc port. Use that actual configured endpoint as a final source.
+if [[ -z "$ENGINE_PORT" ]]; then
+    ENGINE_PORT=$(port_from_endpoint_arg "$CL_EXEC_START" '--chaincfg.engine.rpc-dial-url')
+    [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=service
 fi
-if [[ -z "$PORT_PREFIX" && "${OG_PORT:-}" =~ ^[0-9]+$ ]]; then
-    PORT_PREFIX="$OG_PORT"
-fi
-if [[ -z "$EL_RPC_PORT" && -n "$PORT_PREFIX" ]]; then
-    EL_RPC_PORT="${PORT_PREFIX}545"
-    EL_PORT_SOURCE=environment_prefix
-fi
-if [[ -z "$ENGINE_PORT" && -n "$PORT_PREFIX" ]]; then
-    ENGINE_PORT="${PORT_PREFIX}551"
-    ENGINE_PORT_SOURCE=environment_prefix
+if [[ -z "$ENGINE_PORT" && -r "$CL_CONFIG" ]]; then
+    ENGINE_PORT=$(port_from_toml_url_key "${CL_CONFIG%/*}/app.toml" 'rpc-dial-url')
+    [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=config
 fi
 [[ -n "$CL_RPC_PORT" ]] || CL_PORT_SOURCE=unknown
 [[ -n "$EL_RPC_PORT" ]] || EL_PORT_SOURCE=unknown
@@ -152,6 +205,14 @@ fi
 
 CL_RPC_URL="${DOCTOR_CL_RPC_URL:-}"
 EL_RPC_URL="${DOCTOR_EL_RPC_URL:-}"
+if [[ -n "$CL_RPC_URL" && -z "$CL_RPC_PORT" ]]; then
+    CL_RPC_PORT=$(port_from_url "$CL_RPC_URL")
+    [[ -n "$CL_RPC_PORT" ]] && CL_PORT_SOURCE=override
+fi
+if [[ -n "$EL_RPC_URL" && -z "$EL_RPC_PORT" ]]; then
+    EL_RPC_PORT=$(port_from_url "$EL_RPC_URL")
+    [[ -n "$EL_RPC_PORT" ]] && EL_PORT_SOURCE=override
+fi
 [[ -n "$CL_RPC_URL" ]] || [[ -n "$CL_RPC_PORT" ]] && CL_RPC_URL="http://127.0.0.1:${CL_RPC_PORT}"
 [[ -n "$EL_RPC_URL" ]] || [[ -n "$EL_RPC_PORT" ]] && EL_RPC_URL="http://127.0.0.1:${EL_RPC_PORT}"
 
@@ -184,7 +245,7 @@ Ports are read from the live CL config and active EL systemd command/config.
 Environment overrides are intended for alternate ports and deterministic tests:
 DOCTOR_CL_SERVICE, DOCTOR_GETH_SERVICE, DOCTOR_RETH_SERVICE,
 DOCTOR_CL_RPC_URL, DOCTOR_EL_RPC_URL, DOCTOR_CL_RPC_PORT, DOCTOR_EL_RPC_PORT,
-DOCTOR_ENGINE_PORT, DOCTOR_PORT_PREFIX, DOCTOR_CL_CONFIG, DOCTOR_GETH_CONFIG,
+DOCTOR_ENGINE_PORT, DOCTOR_CL_CONFIG, DOCTOR_GETH_CONFIG,
 DOCTOR_RETH_CONFIG, DOCTOR_DATA_DIR,
 DOCTOR_EXPECTED_CL_NETWORK, DOCTOR_MAX_HEAD_AGE_SECONDS.
 EOF

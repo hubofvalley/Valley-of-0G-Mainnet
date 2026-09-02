@@ -37,12 +37,11 @@ Engine port is not proof of JWT-authenticated Engine API traffic.
 Ports are configuration-driven. The doctor reads the CL RPC port from the live
 CometBFT `config.toml`, then reads the active EL service's `ExecStart` and
 referenced config (`geth-config.toml` or the Reth TOML) for the EL HTTP and
-Engine API ports. It only uses `OG_PORT`/`DOCTOR_PORT_PREFIX` as a legacy
-fallback when the active configuration does not declare a value; unresolved
-ports remain `unknown` and cannot produce a false ready result. Explicit
-`DOCTOR_*_PORT` overrides are available for controlled tests or unusual layouts.
-The JSON output reports each port's source as `config`, `service`, `override`,
-`environment_prefix`, or `unknown`.
+Engine API ports. It never derives a port from another port or a shipped
+default: unresolved ports remain `unknown` and cannot produce a false ready
+result. Explicit `DOCTOR_*_PORT` overrides are available for controlled tests
+or unusual layouts. The JSON output reports each port's source as `config`,
+`service`, `override`, or `unknown`.
 
 The expected CometBFT network defaults from `VERSIONS.json` to
 `0G-mainnet-aristotle`. `DOCTOR_EXPECTED_CL_NETWORK` may override it for a
