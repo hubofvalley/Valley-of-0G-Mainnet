@@ -6,6 +6,8 @@ MANIFEST="$ROOT/VERSIONS.json"
 fail() { echo "MANIFEST_INTEGRITY_TEST_FAIL: $*" >&2; exit 1; }
 
 jq -e '.network == "0g-mainnet" and .schema_version == "1.1"' "$MANIFEST" >/dev/null || fail "unexpected manifest identity/schema"
+jq -e '.chain.consensus_network == "0G-mainnet-aristotle"' "$MANIFEST" >/dev/null || fail "consensus network drift"
+jq -e '.chain.evm_default_rpc_port == 26545 and .chain.engine_default_rpc_port == 26551' "$MANIFEST" >/dev/null || fail "execution port defaults drift"
 jq -e '.source_of_truth | startswith("VERSIONS.json;")' "$MANIFEST" >/dev/null || fail "VERSIONS.json is not declared authoritative"
 
 [ "$(jq -r '.components.storage_node.version_current' "$MANIFEST")" = 'v1.1.0' ] || fail "Storage managed version drift"
