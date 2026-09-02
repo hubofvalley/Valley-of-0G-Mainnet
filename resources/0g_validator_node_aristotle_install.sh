@@ -77,9 +77,9 @@ fi
 
 # Prompt for OG_MONIKER, OG_PORT, Indexer
 read -p "Enter your moniker: " OG_MONIKER
-read -p "Enter your preferred port number: (leave empty to use default: 26) " OG_PORT
+read -p "Enter your preferred port prefix: (leave empty to use default: 8) " OG_PORT
 if [ -z "$OG_PORT" ]; then
-    OG_PORT=26
+    OG_PORT=8
 fi
 read -p "Do you want to enable the indexer? (yes/no): " ENABLE_INDEXER
 read -p "Configure UFW firewall rules for 0G? (y/n): " SETUP_UFW
