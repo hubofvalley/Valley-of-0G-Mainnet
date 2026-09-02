@@ -19,26 +19,144 @@ MAX_HEAD_AGE_SECONDS="${DOCTOR_MAX_HEAD_AGE_SECONDS:-300}"
 EXPECTED_CL_NETWORK="${DOCTOR_EXPECTED_CL_NETWORK:-}"
 CL_CONFIG="${DOCTOR_CL_CONFIG:-${HOME}/.0gchaind/0g-home/0gchaind-home/config/config.toml}"
 
-# Valley's OG_PORT is a prefix, not a complete port. The shipped defaults are
-# CL RPC 26657, EL HTTP RPC 26545, and Engine API 26551. Prefer an explicit
-# override, then the live CL config, then OG_PORT, so custom prefixes work.
+# Port discovery is configuration-first. OG_PORT is only a legacy prefix
+# fallback; it must never override a port declared by the live service/config.
+SYSTEMCTL="${DOCTOR_SYSTEMCTL_BIN:-systemctl}"
+CURL="${DOCTOR_CURL_BIN:-curl}"
+SS="${DOCTOR_SS_BIN:-ss}"
+DF="${DOCTOR_DF_BIN:-df}"
+TIMEDATECTL="${DOCTOR_TIMEDATECTL_BIN:-timedatectl}"
+JQ="${DOCTOR_JQ_BIN:-jq}"
+
+service_state() {
+    local service=$1 output
+    if ! command -v "$SYSTEMCTL" >/dev/null 2>&1; then
+        printf '%s' unknown
+        return
+    fi
+    output=$("$SYSTEMCTL" is-active "$service" 2>/dev/null || true)
+    if [[ "$output" == active ]]; then
+        printf '%s' true
+    elif [[ -n "$output" ]]; then
+        printf '%s' false
+    else
+        printf '%s' unknown
+    fi
+}
+
+service_exec_start() {
+    local service=$1
+    if ! command -v "$SYSTEMCTL" >/dev/null 2>&1; then
+        return 0
+    fi
+    "$SYSTEMCTL" show -p ExecStart --value "$service" 2>/dev/null || true
+}
+
+port_from_arg() {
+    local command_line=$1 flag=$2 match
+    match=$(grep -oE -- "${flag}(=|[[:space:]]+)[0-9]+" <<<"$command_line" | head -n 1 || true)
+    [[ -n "$match" ]] && grep -oE '[0-9]+$' <<<"$match" || true
+}
+
+port_from_toml() {
+    local file=$1 key=$2 match
+    [[ -r "$file" ]] || return 0
+    match=$(grep -E "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*[0-9]+([[:space:]]*#.*)?$" "$file" | head -n 1 || true)
+    [[ -n "$match" ]] && grep -oE '[0-9]+' <<<"$match" | head -n 1 || true
+}
+
+config_path_from_exec() {
+    local command_line=$1 path
+    if [[ "$command_line" =~ --config(=|[[:space:]])([^[:space:];}]+) ]]; then
+        path=${BASH_REMATCH[2]}
+        path=${path#\"}
+        path=${path%\"}
+        printf '%s' "$path"
+    fi
+}
+
 CL_RPC_PORT="${DOCTOR_CL_RPC_PORT:-}"
-if [[ -z "$CL_RPC_PORT" && -f "$CL_CONFIG" ]]; then
-    CL_RPC_PORT=$(grep -oP 'laddr = "tcp://(?:0.0.0.0|127.0.0.1):\K[0-9]+' "$CL_CONFIG" 2>/dev/null | head -n 1 || true)
+CL_PORT_SOURCE=override
+if [[ -z "$CL_RPC_PORT" && -r "$CL_CONFIG" ]]; then
+    CL_RPC_PORT=$(grep -oP '^[[:space:]]*laddr[[:space:]]*=[[:space:]]*"tcp://(?:[^:]+):\K[0-9]+' "$CL_CONFIG" 2>/dev/null | head -n 1 || true)
+    [[ -n "$CL_RPC_PORT" ]] && CL_PORT_SOURCE=config
 fi
-CL_RPC_PORT="${CL_RPC_PORT:-${OG_PORT:-26}657}"
+
+GETH_EXEC_START=$(service_exec_start "$GETH_SERVICE")
+RETH_EXEC_START=$(service_exec_start "$RETH_SERVICE")
+geth_state=$(service_state "$GETH_SERVICE")
+reth_state=$(service_state "$RETH_SERVICE")
+active_el_exec=''
+active_el_config=''
+if [[ "$geth_state" == true && "$reth_state" != true ]]; then
+    active_el_exec=$GETH_EXEC_START
+    active_el_config="${DOCTOR_GETH_CONFIG:-$(config_path_from_exec "$GETH_EXEC_START")}"
+    active_el_config="${active_el_config:-${DATA_DIR}/geth-config.toml}"
+elif [[ "$reth_state" == true && "$geth_state" != true ]]; then
+    active_el_exec=$RETH_EXEC_START
+    active_el_config="${DOCTOR_RETH_CONFIG:-$(config_path_from_exec "$RETH_EXEC_START")}"
+    active_el_config="${active_el_config:-${DATA_DIR}/0g-home/reth-home/reth.toml}"
+fi
+
+EL_RPC_PORT="${DOCTOR_EL_RPC_PORT:-}"
+ENGINE_PORT="${DOCTOR_ENGINE_PORT:-}"
+EL_PORT_SOURCE=unknown
+ENGINE_PORT_SOURCE=unknown
+if [[ -n "${DOCTOR_EL_RPC_PORT:-}" ]]; then
+    EL_PORT_SOURCE=override
+else
+    EL_RPC_PORT=$(port_from_arg "$active_el_exec" '--http.port')
+    [[ -n "$EL_RPC_PORT" ]] && EL_PORT_SOURCE=service
+    if [[ -z "$EL_RPC_PORT" && "$active_el_config" == *geth-config.toml ]]; then
+        EL_RPC_PORT=$(port_from_toml "$active_el_config" 'HTTPPort')
+        [[ -n "$EL_RPC_PORT" ]] && EL_PORT_SOURCE=config
+    elif [[ -z "$EL_RPC_PORT" ]]; then
+        EL_RPC_PORT=$(port_from_toml "$active_el_config" 'http\.port')
+        [[ -n "$EL_RPC_PORT" ]] && EL_PORT_SOURCE=config
+    fi
+fi
+if [[ -n "${DOCTOR_ENGINE_PORT:-}" ]]; then
+    ENGINE_PORT_SOURCE=override
+else
+    ENGINE_PORT=$(port_from_arg "$active_el_exec" '--authrpc.port')
+    [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=service
+    if [[ -z "$ENGINE_PORT" && "$active_el_config" == *geth-config.toml ]]; then
+        ENGINE_PORT=$(port_from_toml "$active_el_config" 'AuthPort')
+        [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=config
+    elif [[ -z "$ENGINE_PORT" ]]; then
+        ENGINE_PORT=$(port_from_toml "$active_el_config" 'authrpc\.port')
+        [[ -n "$ENGINE_PORT" ]] && ENGINE_PORT_SOURCE=config
+    fi
+fi
+
+# Legacy environment fallback only when no active service/config declares a
+# value. This keeps old installs diagnosable without masking configuration.
 PORT_PREFIX="${DOCTOR_PORT_PREFIX:-}"
 if [[ -z "$PORT_PREFIX" && "$CL_RPC_PORT" =~ ^([0-9]+)657$ ]]; then
     PORT_PREFIX="${BASH_REMATCH[1]}"
 fi
-PORT_PREFIX="${PORT_PREFIX:-${OG_PORT:-26}}"
-EL_RPC_PORT="${DOCTOR_EL_RPC_PORT:-${PORT_PREFIX}545}"
-ENGINE_PORT="${DOCTOR_ENGINE_PORT:-${PORT_PREFIX}551}"
-CL_RPC_URL="${DOCTOR_CL_RPC_URL:-http://127.0.0.1:${CL_RPC_PORT}}"
-EL_RPC_URL="${DOCTOR_EL_RPC_URL:-http://127.0.0.1:${EL_RPC_PORT}}"
+if [[ -z "$PORT_PREFIX" && "${OG_PORT:-}" =~ ^[0-9]+$ ]]; then
+    PORT_PREFIX="$OG_PORT"
+fi
+if [[ -z "$EL_RPC_PORT" && -n "$PORT_PREFIX" ]]; then
+    EL_RPC_PORT="${PORT_PREFIX}545"
+    EL_PORT_SOURCE=environment_prefix
+fi
+if [[ -z "$ENGINE_PORT" && -n "$PORT_PREFIX" ]]; then
+    ENGINE_PORT="${PORT_PREFIX}551"
+    ENGINE_PORT_SOURCE=environment_prefix
+fi
+[[ -n "$CL_RPC_PORT" ]] || CL_PORT_SOURCE=unknown
+[[ -n "$EL_RPC_PORT" ]] || EL_PORT_SOURCE=unknown
+[[ -n "$ENGINE_PORT" ]] || ENGINE_PORT_SOURCE=unknown
+
+CL_RPC_URL="${DOCTOR_CL_RPC_URL:-}"
+EL_RPC_URL="${DOCTOR_EL_RPC_URL:-}"
+[[ -n "$CL_RPC_URL" ]] || [[ -n "$CL_RPC_PORT" ]] && CL_RPC_URL="http://127.0.0.1:${CL_RPC_PORT}"
+[[ -n "$EL_RPC_URL" ]] || [[ -n "$EL_RPC_PORT" ]] && EL_RPC_URL="http://127.0.0.1:${EL_RPC_PORT}"
 
 for port_value in "$CL_RPC_PORT" "$EL_RPC_PORT" "$ENGINE_PORT"; do
-    if ! [[ "$port_value" =~ ^[0-9]+$ ]] || (( port_value < 1 || port_value > 65535 )); then
+    if [[ -n "$port_value" ]] && { ! [[ "$port_value" =~ ^[0-9]+$ ]] || (( port_value < 1 || port_value > 65535 )); }; then
         echo "Node Doctor received an invalid port: $port_value" >&2
         exit 2
     fi
@@ -48,13 +166,6 @@ if ! [[ "$HEAD_LAG_LIMIT" =~ ^[0-9]+$ ]] || ! [[ "$MIN_FREE_PERCENT" =~ ^[0-9]+$
     echo "Node Doctor received invalid numeric thresholds." >&2
     exit 2
 fi
-
-SYSTEMCTL="${DOCTOR_SYSTEMCTL_BIN:-systemctl}"
-CURL="${DOCTOR_CURL_BIN:-curl}"
-SS="${DOCTOR_SS_BIN:-ss}"
-DF="${DOCTOR_DF_BIN:-df}"
-TIMEDATECTL="${DOCTOR_TIMEDATECTL_BIN:-timedatectl}"
-JQ="${DOCTOR_JQ_BIN:-jq}"
 
 FORMAT=text
 case "${1:-}" in
@@ -69,10 +180,12 @@ client from systemd, then evaluates the consensus and execution layers as one
 joint CL/EL stack. Exit status: 0 ready, 1 unhealthy/degraded, 2 usage or
 dependency error.
 
+Ports are read from the live CL config and active EL systemd command/config.
 Environment overrides are intended for alternate ports and deterministic tests:
 DOCTOR_CL_SERVICE, DOCTOR_GETH_SERVICE, DOCTOR_RETH_SERVICE,
 DOCTOR_CL_RPC_URL, DOCTOR_EL_RPC_URL, DOCTOR_CL_RPC_PORT, DOCTOR_EL_RPC_PORT,
-DOCTOR_ENGINE_PORT, DOCTOR_PORT_PREFIX, DOCTOR_DATA_DIR,
+DOCTOR_ENGINE_PORT, DOCTOR_PORT_PREFIX, DOCTOR_CL_CONFIG, DOCTOR_GETH_CONFIG,
+DOCTOR_RETH_CONFIG, DOCTOR_DATA_DIR,
 DOCTOR_EXPECTED_CL_NETWORK, DOCTOR_MAX_HEAD_AGE_SECONDS.
 EOF
         exit 0
@@ -119,22 +232,6 @@ rpc_call() {
         -H 'Content-Type: application/json' \
         --data "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":[],\"id\":1}" \
         "$url" 2>/dev/null || true
-}
-
-service_state() {
-    local service=$1 output
-    if ! command -v "$SYSTEMCTL" >/dev/null 2>&1; then
-        printf '%s' unknown
-        return
-    fi
-    output=$("$SYSTEMCTL" is-active "$service" 2>/dev/null || true)
-    if [[ "$output" == active ]]; then
-        printf '%s' true
-    elif [[ -n "$output" ]]; then
-        printf '%s' false
-    else
-        printf '%s' unknown
-    fi
 }
 
 cl_status=$(rpc_call "$CL_RPC_URL" status)
@@ -352,11 +449,16 @@ listeners_for_port() {
     fi
     "$SS" -H -ltn 2>/dev/null | awk -v port=":${port}" '$4 ~ port "$" { print $4; found=1 } END { if (!found) exit 1 }' | paste -sd, - || true
 }
-engine_listener=$(listeners_for_port "$ENGINE_PORT")
+engine_listener=''
+if [[ -n "$ENGINE_PORT" ]]; then
+    engine_listener=$(listeners_for_port "$ENGINE_PORT")
+fi
 if [[ -n "$engine_listener" && "$engine_listener" != unknown ]]; then
     add_check engine_listener pass "TCP listener ${engine_listener} (port ${ENGINE_PORT}); authenticated Engine API not probed" true
 elif [[ "$engine_listener" == unknown ]]; then
     add_check engine_listener warn "cannot inspect Engine API port ${ENGINE_PORT}; ss is unavailable" true
+elif [[ -z "$ENGINE_PORT" ]]; then
+    add_check engine_listener warn "Engine API port unavailable from active service/config" true
 else
     add_check engine_listener fail "Engine API port ${ENGINE_PORT} is not listening" true
 fi
@@ -443,6 +545,8 @@ result=$(
         --arg cl_head_age "$cl_head_age" \
         --arg cl_peers "$cl_peers" \
         --arg cl_version "$cl_version" \
+        --arg cl_rpc_port "$CL_RPC_PORT" \
+        --arg cl_port_source "$CL_PORT_SOURCE" \
         --arg el_service "$active_el_service" \
         --arg el_role "execution_layer" \
         --arg el_active "$el_active" \
@@ -452,12 +556,15 @@ result=$(
         --arg el_chain_id "$el_chain_id" \
         --arg el_peers "$el_peers" \
         --arg el_version "$el_version" \
+        --arg el_rpc_port "$EL_RPC_PORT" \
+        --arg el_port_source "$EL_PORT_SOURCE" \
         --arg geth_service "$GETH_SERVICE" \
         --arg reth_service "$RETH_SERVICE" \
         --arg geth_active "$geth_active" \
         --arg reth_active "$reth_active" \
         --arg active_el_count "$active_el_count" \
         --arg engine_port "$ENGINE_PORT" \
+        --arg engine_port_source "$ENGINE_PORT_SOURCE" \
         --arg head_gap "$head_gap" \
         --arg expected_chain_id "$expected_chain_id" \
         --arg critical_failures "$critical_failures" \
@@ -470,14 +577,16 @@ result=$(
           components:{consensus:{role:$cl_role,service:$cl_service,active:($cl_active|bool_value),
             head:($cl_head|num_value),catching_up:($cl_catching_up|bool_value),network:($cl_network|if .=="unknown" then null else . end),
             latest_block_time:($cl_head_time|if .=="unknown" then null else . end),latest_block_age_seconds:($cl_head_age|num_value),
-            peers:($cl_peers|num_value),version:$cl_version},
+            peers:($cl_peers|num_value),version:$cl_version,rpc_port:($cl_rpc_port|num_value)},
             execution:{role:$el_role,service:(if $active_el_count == "1" then $el_service else null end),
             active:(if $active_el_count == "1" then true elif $active_el_count == "0" then false else null end),
             active_services:([if $geth_active == "true" then $geth_service else empty end,
                               if $reth_active == "true" then $reth_service else empty end]),
             head:($el_head_decimal|num_value),syncing:($el_sync|bool_value),
-            chain_id:($el_chain_id|num_value),peers:($el_peers|num_value),version:$el_version}},
-          joint:{head_gap:($head_gap|num_value),expected_chain_id:($expected_chain_id|num_value),engine_api_port:($engine_port|tonumber)},
+            chain_id:($el_chain_id|num_value),peers:($el_peers|num_value),version:$el_version,
+            rpc_port:($el_rpc_port|num_value),engine_api_port:($engine_port|num_value)}},
+          joint:{head_gap:($head_gap|num_value),expected_chain_id:($expected_chain_id|num_value),engine_api_port:($engine_port|num_value)},
+          port_sources:{consensus_rpc:$cl_port_source,execution_rpc:$el_port_source,engine_api:$engine_port_source},
           counts:{critical_failures:($critical_failures|tonumber),critical_warnings:($critical_warnings|tonumber),
                   advisory_failures:($advisory_failures|tonumber),advisory_warnings:($advisory_warnings|tonumber)},
           checks:$checks}'
@@ -489,7 +598,10 @@ else
     printf 'Valley of 0G Node Doctor — %s\n' "$overall"
     printf 'CL: 0gchaind (%s), head=%s, catching_up=%s, peers=%s\n' "$cl_active" "$cl_head" "$cl_catching_up" "$cl_peers"
     printf 'EL: %s (%s), head=%s, syncing=%s, peers=%s, chain_id=%s\n' "$active_el_kind" "$active_el_count" "$el_head" "$el_sync" "$el_peers" "$el_chain_id"
-    printf 'Joint: head_gap=%s, Engine API port=%s\n\n' "$head_gap" "$ENGINE_PORT"
+    printf 'Ports: CL RPC=%s (%s), EL RPC=%s (%s), Engine API=%s (%s)\n' \
+        "${CL_RPC_PORT:-unknown}" "$CL_PORT_SOURCE" "${EL_RPC_PORT:-unknown}" "$EL_PORT_SOURCE" \
+        "${ENGINE_PORT:-unknown}" "$ENGINE_PORT_SOURCE"
+    printf 'Joint: head_gap=%s\n\n' "$head_gap"
     "$JQ" -r '.checks[] | "[\(.status | ascii_upcase)] \(.id): \(.detail)"' <<<"$result"
     printf '\nRead-only check complete. No services or configuration were changed.\n'
 fi

@@ -11,11 +11,25 @@ grep -Fq 'p) run_node_doctor' "$ROOT/resources/valleyof0G.sh"
 grep -Fq 'p. Run Node Doctor (read-only health/readiness checks)' "$ROOT/resources/valleyof0G.sh"
 test -x "$DOCTOR"
 
-mkdir -p "$TMP/bin" "$TMP/data"
+mkdir -p "$TMP/bin" "$TMP/data" "$TMP/.0gchaind/0g-home/0gchaind-home/config" "$TMP/.0gchaind/0g-home/reth-home"
+printf '%s\n' 'laddr = "tcp://127.0.0.1:27657"' > "$TMP/.0gchaind/0g-home/0gchaind-home/config/config.toml"
+printf '%s\n' 'http.port = 27545' 'authrpc.port = 27551' > "$TMP/.0gchaind/0g-home/reth-home/reth.toml"
+printf '%s\n' 'HTTPPort = 27545' 'AuthPort = 27551' > "$TMP/.0gchaind/geth-config.toml"
+printf '%s\n' 'laddr = "tcp://127.0.0.1:28657"' > "$TMP/cl-28.toml"
+printf '%s\n' 'http.port = 28545' 'authrpc.port = 28551' > "$TMP/reth-28.toml"
 
 cat > "$TMP/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${1:-}" == show && "${2:-}" == -p && "${3:-}" == ExecStart ]]; then
+    case "${5:-}" in
+        0gchaind) printf 'ExecStart=/home/test/0gchaind --rpc.laddr tcp://127.0.0.1:27657\n' ;;
+        0g-reth) printf 'ExecStart=/home/test/0g-reth --config %s/.0gchaind/0g-home/reth-home/reth.toml\n' "$HOME" ;;
+        0g-geth) printf 'ExecStart=/home/test/0g-geth --config %s/.0gchaind/geth-config.toml\n' "$HOME" ;;
+        *) printf '\n' ;;
+    esac
+    exit 0
+fi
 if [[ "${1:-}" != is-active ]]; then
     echo "unexpected mutating systemctl call" >&2
     exit 99
@@ -81,7 +95,7 @@ EOF
 
 cat > "$TMP/bin/ss" <<'EOF'
 #!/usr/bin/env bash
-prefix=${DOCTOR_PORT_PREFIX:-26}
+prefix=${DOCTOR_PORT_PREFIX:-27}
 if [[ "${DOCTOR_FIXTURE:-healthy}" == public ]]; then
   printf '%s\n' \
     "LISTEN 0 128 127.0.0.1:${prefix}657 0.0.0.0:*" \
@@ -125,7 +139,10 @@ echo "$healthy_json" | jq -e '
     .components.execution.active == true and
     .components.execution.active_services == ["0g-reth"] and
     (.components.execution.chain_id | type) == "number" and
-    (.joint.engine_api_port == 26551) and
+    (.components.consensus.rpc_port == 27657) and
+    (.components.execution.rpc_port == 27545) and
+    (.joint.engine_api_port == 27551) and
+    .port_sources == {consensus_rpc:"config",execution_rpc:"config",engine_api:"config"} and
     (any(.checks[]; .id == "engine_listener" and .critical == true))
 ' >/dev/null
 
@@ -135,7 +152,7 @@ echo "$geth_json" | jq -e '.overall == "ready" and .components.execution.service
 hex_json=$(env "${common_env[@]}" DOCTOR_FIXTURE=hexletters "$DOCTOR" --json)
 echo "$hex_json" | jq -e '.overall == "ready" and .components.execution.head == 6844 and .joint.head_gap == 0' >/dev/null
 
-prefix_json=$(env "${common_env[@]}" DOCTOR_PORT_PREFIX=28 "$DOCTOR" --json)
+prefix_json=$(env "${common_env[@]}" DOCTOR_PORT_PREFIX=28 DOCTOR_CL_CONFIG="$TMP/cl-28.toml" DOCTOR_RETH_CONFIG="$TMP/reth-28.toml" "$DOCTOR" --json)
 echo "$prefix_json" | jq -e '.overall == "ready" and .joint.engine_api_port == 28551' >/dev/null
 
 public_json=$(env "${common_env[@]}" DOCTOR_FIXTURE=public "$DOCTOR" --json)
