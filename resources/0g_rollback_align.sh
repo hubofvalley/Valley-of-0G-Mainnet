@@ -100,7 +100,7 @@ rollback_align_cl_el() {
 
     # Detect port prefix
     local OG_PORT
-    OG_PORT="${OG_PORT:-26}"
+    OG_PORT="${OG_PORT:-8}"
 
     # Detect service names
     local CL_SERVICE EL_SERVICE

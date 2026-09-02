@@ -11,8 +11,8 @@
     "consensus_network": "0G-mainnet-aristotle",
     "evm_chain_id": 16661,
     "consensus_default_rpc_port": 26657,
-    "evm_default_rpc_port": 26545,
-    "engine_default_rpc_port": 26551,
+    "evm_default_rpc_port": 8545,
+    "engine_default_rpc_port": 8551,
     "go_version": "1.22.5"
   },
   "components": {

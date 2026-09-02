@@ -75,8 +75,8 @@ IMPORT_GETH_DATA="$SELECTED_IMPORT_GETH_DATA"
 
 # Detect port prefix
 if [ -z "${OG_PORT:-}" ]; then
-    read -p "Enter your port prefix (e.g. 26): " OG_PORT
-    OG_PORT=${OG_PORT:-26}
+    read -p "Enter your port prefix (e.g. 8): " OG_PORT
+    OG_PORT=${OG_PORT:-8}
 fi
 
 # Detect service names
