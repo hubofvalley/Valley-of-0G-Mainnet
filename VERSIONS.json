@@ -8,9 +8,11 @@
   "verification_note": "Validator was live-validated on a Grand Valley RPC node: Aristotle bundle v1.0.6, reth 1.8.1 active, geth 1.15.11 inactive (2026-06-26); 0gchaind e8e1071 matched the official v1.0.6 release asset by SHA-256 (2026-07-13). Version model: bundle (v1.0.6, upgrade deadline applies) plus ships (component versions shipped inside the bundle). gv-ops compares live binaries against bundle.ships, not against the bundle version. Storage/storage-kv/alignment are not installed on the validated node yet, so those values are still seeded from scripts (needs_live_verification).",
   "chain": {
     "chain_spec": "mainnet",
+    "consensus_network": "0G-mainnet-aristotle",
     "evm_chain_id": 16661,
     "consensus_default_rpc_port": 26657,
-    "evm_default_rpc_port": 8545,
+    "evm_default_rpc_port": 26545,
+    "engine_default_rpc_port": 26551,
     "go_version": "1.22.5"
   },
   "components": {
@@ -145,7 +147,8 @@
     "geth_to_reth_migration": "resources/0g_geth_to_reth_migrate.sh",
     "rollback_align_cl_el": "resources/0g_rollback_align.sh",
     "storage_node_change": "resources/0g_storage_node_change.sh",
-    "cli_installer": "resources/0gchain_app_install.sh"
+    "cli_installer": "resources/0gchain_app_install.sh",
+    "node_doctor": "resources/0g_node_doctor.sh"
   },
   "explorer": "https://explorer.0g.ai/mainnet/validators",
   "docs": {
@@ -153,6 +156,7 @@
     "storage_node": "docs/storage-node.md",
     "storage_kv": "docs/storage-kv.md",
     "snapshots": "docs/snapshots.md",
-    "scheduler": "docs/scheduler.md"
+    "scheduler": "docs/scheduler.md",
+    "node_doctor": "docs/node-doctor.md"
   }
 }

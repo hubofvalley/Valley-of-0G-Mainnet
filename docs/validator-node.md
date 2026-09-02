@@ -52,8 +52,8 @@ Otherwise it stays loopback-only.
 |---|---|
 | 26656 | Consensus P2P |
 | 26657 | Consensus RPC |
-| 8545 | EVM JSON-RPC |
-| 8546 | EVM WebSocket |
+| 26545 | EVM JSON-RPC |
+| 26546 | EVM WebSocket |
 
 Custom port prefixes selected during installation change these values.
 
@@ -67,7 +67,7 @@ sudo systemctl status 0gchaind "$EL_SERVICE"
 sudo journalctl -u 0gchaind -n 100 --no-pager
 sudo journalctl -u "$EL_SERVICE" -n 100 --no-pager
 curl -s http://127.0.0.1:26657/status | jq '.result.sync_info'
-curl -s -X POST http://127.0.0.1:8545 \
+curl -s -X POST http://127.0.0.1:26545 \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' | jq
 ```

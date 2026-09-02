@@ -77,6 +77,7 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | [`0g_ai_alignment_node_install.sh`](resources/0g_ai_alignment_node_install.sh) | Install an AI Alignment Node |
 | [`0g_geth_to_reth_migrate.sh`](resources/0g_geth_to_reth_migrate.sh) | Migrate the execution client from Geth to Reth |
 | [`0g_rollback_align.sh`](resources/0g_rollback_align.sh) | Roll back and realign consensus/execution clients |
+| [`0g_node_doctor.sh`](resources/0g_node_doctor.sh) | Read-only CL/EL health and readiness diagnostics |
 | [`0g_standard_zgs_node_snapshot.sh`](resources/0g_standard_zgs_node_snapshot.sh) | Apply a Standard ZGS snapshot |
 | [`0g_turbo_zgs_node_snapshot.sh`](resources/0g_turbo_zgs_node_snapshot.sh) | Apply a Turbo ZGS snapshot |
 
@@ -117,6 +118,7 @@ For detailed documentation on each script, see the [docs/](docs/) folder:
 
 - [Usage guide](docs/usage.md) - menu navigation, option reference, safety notes.
 - [Validator node guide](docs/validator-node.md) - validator node setup and operational details.
+- [Node Doctor guide](docs/node-doctor.md) - read-only validator health and readiness diagnostics.
 - [Storage node guide](docs/storage-node.md) - storage node setup and operations.
 - [Storage KV guide](docs/storage-kv.md) - Storage KV setup and maintenance.
 - [Snapshot guide](docs/snapshots.md) - validator and storage snapshot safety.

@@ -21,6 +21,7 @@ This folder contains detailed documentation for each script in the Valley of 0G 
 |----------|-------------|
 | [snapshots.md](snapshots.md) | Snapshot application guide |
 | [scheduler.md](scheduler.md) | Node scheduling and automation |
+| [node-doctor.md](node-doctor.md) | Read-only validator health and readiness diagnostics |
 
 ## Common tasks
 

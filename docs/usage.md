@@ -30,7 +30,7 @@ Run it as the user that owns the 0G node files. The script stores environment va
 | 1b. Manage Validator Node | Opens validator node management/update flow. | Validator binary or service maintenance. | Medium. |
 | 1c. Apply Validator Node Snapshot | Applies validator node snapshot. | Speed up sync or recover data. | Yes - can replace chain data. |
 | 1d. Add Peers | Updates validator node peers. | Peer connectivity issues. | Low - config change. |
-| 1e. Show Node Status | Shows local validator node status versus public height. | Health check. | No. |
+| 1e. Show Node Status | Shows local validator node status versus public height. | Quick height check. | No. |
 | 1f. Show Validator Node Logs | Tails consensus and execution logs together. | Debug validator stack. | No. |
 | 1g. Show Consensus Client Logs | Tails consensus logs. | Debug consensus issues. | No. |
 | 1h. Show Execution Client Logs | Tails geth/reth logs. | Debug execution issues. | No. |
@@ -41,6 +41,7 @@ Run it as the user that owns the 0G node files. The script stores environment va
 | 1m. Migrate Geth to Reth | Migrates execution client from geth to reth. | Experimental EL migration. | High - experimental service/data change. |
 | 1n. Rollback & Align CL/EL Height | Recovery flow to align consensus/execution height. | Broken CL/EL sync recovery. | High - recovery operation. |
 | 1o. Check & Withdraw Rewards | Opens staking rewards management for delegation value, operator commission, tip fees, and withdrawal queue. | Check validator earnings or submit reward-related validator-contract transactions. | Mixed - dashboard/delegation/queue checks are read-only; withdrawals and queue processing submit transactions. |
+| 1p. Run Node Doctor | Runs read-only CL/EL health, sync, version, chain ID, Engine API, disk, clock, and RPC exposure checks. | Diagnose readiness before changing services or data. | No. |
 | 2a. Deploy Storage Node | Stages the reviewed Storage binary, non-secret config, and service unit. It does not collect a miner key or start mining. | Prepare a fresh Storage installation before the operator-owned upstream secret step. | Medium - installs software; service remains disabled/stopped. |
 | 2b. Update Storage Node | Updates storage node binary/service. | Storage node upgrade. | Medium. |
 | 2c. Apply Storage Node Snapshot | Applies storage node snapshot. | Speed up or recover storage sync. | Yes - can replace storage data. |

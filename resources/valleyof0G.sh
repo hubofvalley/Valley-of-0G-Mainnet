@@ -1815,6 +1815,21 @@ function show_node_status() {
     menu
 }
 
+function run_node_doctor() {
+    clear
+    echo -e "${ORANGE}Valley of 0G Node Doctor (read-only)...${RESET}"
+    local script_dir
+    script_dir="$(dirname "${BASH_SOURCE[0]}")"
+    if [ -f "$script_dir/0g_node_doctor.sh" ]; then
+        bash "$script_dir/0g_node_doctor.sh" || true
+    else
+        run_repository_script resources/0g_node_doctor.sh || true
+    fi
+    echo -e "\n${YELLOW}Press Enter to go back to main menu${RESET}"
+    read -r
+    menu
+}
+
 function migrate_geth_to_reth() {
     clear
     echo -e "${ORANGE}Migrating Geth to Reth Execution Client...${RESET}"
@@ -2292,6 +2307,7 @@ function show_guidelines() {
     echo "   l. Undelegate from Validator: Undelegate previously delegated OG."
     echo "   m. Migrate Geth to Reth: Migrates your database from Geth to Reth."
     echo "   o. Check & Withdraw Rewards: Delegation value, commission, tip fees, and withdrawal queue."
+    echo "   p. Run Node Doctor: Read-only CL/EL health, sync, version, network, and disk checks."
 
     echo -e "${GREEN}Storage Node Options:${RESET}"
     echo "   a. Deploy Storage Node: Sets up a new storage node."
@@ -2366,6 +2382,7 @@ function menu() {
     echo "    m. Migrate Geth to Reth (Experimental)"
     echo "    n. Rollback & Align CL/EL Height (Recovery)"
     echo "    o. Check & Withdraw Rewards (Delegation / Commission / Tip Fees)"
+    echo "    p. Run Node Doctor (read-only health/readiness checks)"
     echo -e "${GREEN}2. Storage Node${RESET}"
     echo "    a. Deploy Storage Node"
     echo "    b. Update Storage Node"
@@ -2410,8 +2427,8 @@ function menu() {
     echo -e "${GREEN}Let's Buidl 0G Together - Grand Valley${RESET}"
     read -p "Choose an option (e.g., 1a or 1 then a): " OPTION
 
-    # Accept combined selections up to 9 and sub-letters up to 'o' (for Validator Node rewards option)
-    if [[ $OPTION =~ ^[1-9][a-o]$ ]]; then
+    # Accept combined selections up to 9 and sub-letters up to 'p' (Node Doctor)
+    if [[ $OPTION =~ ^[1-9][a-p]$ ]]; then
         MAIN_OPTION=${OPTION:0:1}
         SUB_OPTION=${OPTION:1:1}
     else
@@ -2440,6 +2457,7 @@ function menu() {
                 m) migrate_geth_to_reth ;;
                 n) rollback_align_height ;;
                 o) manage_staking_rewards ;;
+                p) run_node_doctor ;;
                 *) echo "Invalid sub-option. Please try again." ;;
             esac
             ;;
