@@ -17,6 +17,10 @@ jq -e '.source_of_truth | startswith("VERSIONS.json;")' "$MANIFEST" >/dev/null |
 [ "$(jq -r '.components.storage_kv.version_current' "$MANIFEST")" = 'v1.4.0' ] || fail "Storage KV managed version drift"
 [ "$(jq -r '.components.storage_kv.source_tag' "$MANIFEST")" = 'v1.4.0' ] || fail "Storage KV source tag drift"
 [ "$(jq -r '.components.storage_kv.pinned_commit' "$MANIFEST")" = '707db658c80aebb9f902152b311a1c26884f9e63' ] || fail "Storage KV v1.4.0 commit drift"
+[ "$(jq -r '.components.storage_kv.build_toolchain.rust' "$MANIFEST")" = '1.75.0' ] || fail "Storage KV Rust toolchain drift"
+[ "$(jq -r '.components.storage_kv.build_toolchain.cargo_locked' "$MANIFEST")" = 'true' ] || fail "Storage KV build must remain Cargo.lock enforced"
+[ "$(jq -r '.components.storage_kv.upstream_latest' "$MANIFEST")" = 'v1.5.1' ] || fail "Storage KV upstream candidate drift"
+[ "$(jq -r '.components.storage_kv.upstream_latest_linux_asset_sha256' "$MANIFEST")" = '7e5ef9c83d5907399863a0832c8cc1f42decc6499cedd72e7aadb94822d1e4c6' ] || fail "Storage KV v1.5.1 candidate digest drift"
 
 [ "$(jq -r '.components.validator.bundle.version_current' "$MANIFEST")" = 'v1.0.6' ] || fail "validator target drift"
 [ "$(jq -r '.components.validator.bundle.release_artifact_sha256' "$MANIFEST")" = '7de32d15a82009bd7fb0da760c708aa5af55ebfc89ebb11d69cf45548f7ceca9' ] || fail "validator artifact digest drift"
@@ -63,8 +67,15 @@ for rel in \
     resources/0g_storage_node_update.sh \
     resources/0g_storage_kv_install.sh \
     resources/0g_storage_kv_update.sh; do
-    grep -Fq 'git checkout --detach "$TARGET_COMMIT"' "$ROOT/$rel" || fail "$rel does not checkout detached manifest commit"
-    grep -Fq 'git rev-parse HEAD' "$ROOT/$rel" || fail "$rel does not verify checked-out commit"
+    grep -Fq 'checkout --detach "$TARGET_COMMIT"' "$ROOT/$rel" || fail "$rel does not checkout detached manifest commit"
+    grep -Fq 'rev-parse HEAD' "$ROOT/$rel" || fail "$rel does not verify checked-out commit"
+done
+
+for rel in \
+    resources/0g_storage_kv_install.sh \
+    resources/0g_storage_kv_update.sh; do
+    grep -Fq 'cargo build --release --locked' "$ROOT/$rel" || fail "$rel does not enforce Cargo.lock"
+    grep -Fq '.components.storage_kv.source_tag_object' "$ROOT/$rel" || fail "$rel does not verify the reviewed tag object"
 done
 
 # User-facing version table remains mechanically aligned with the manifest.

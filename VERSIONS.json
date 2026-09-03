@@ -109,8 +109,14 @@
       "update_script": "resources/0g_storage_kv_update.sh",
       "source_tag": "v1.4.0",
       "source_tag_object": "12c9e889686f12c945c33e9c0ba097d6a5dd1f63",
+      "build_toolchain": {
+        "rust": "1.75.0",
+        "cargo_locked": true
+      },
       "upstream_latest": "v1.5.1",
-      "upgrade_status": "review_required"
+      "upstream_latest_linux_asset_sha256": "7e5ef9c83d5907399863a0832c8cc1f42decc6499cedd72e7aadb94822d1e4c6",
+      "upgrade_status": "review_required",
+      "upgrade_note": "v1.5.1 adds cold-start optimization and ships a Linux release asset, but upstream requires streams not to exist before the configured start block. Valley keeps v1.4.0 as the managed target until a live compatibility/canary review is completed."
     },
     "ai_alignment_node": {
       "name": "alignment-node",

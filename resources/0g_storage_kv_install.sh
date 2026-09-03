@@ -7,146 +7,246 @@ MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
 # shellcheck source=resources/valley_manifest.sh
 source "$MANIFEST_LIB"
 valley_manifest_init
+
 TARGET_VERSION=$(valley_manifest_get '.components.storage_kv.version_current')
 TARGET_COMMIT=$(valley_manifest_get '.components.storage_kv.pinned_commit')
+SOURCE_TAG=$(valley_manifest_get '.components.storage_kv.source_tag')
+SOURCE_TAG_OBJECT=$(valley_manifest_get '.components.storage_kv.source_tag_object')
+RUST_VERSION=$(valley_manifest_get '.components.storage_kv.build_toolchain.rust')
 KV_REPO=$(valley_manifest_get '.components.storage_kv.release_repo')
-valley_require_git_commit "$TARGET_COMMIT" || { echo "Invalid Storage KV commit in VERSIONS.json." >&2; exit 2; }
+EXPECTED_CHAIN_ID=$(valley_manifest_get '.chain.evm_chain_id')
 
-# Function to query the latest block number from a JSON-RPC endpoint
-query_block_number() {
-    local endpoint=$1
-    local block_number=$(curl -s -X POST $endpoint -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result' | xargs printf "%d\n")
-    echo $block_number
+valley_require_git_commit "$TARGET_COMMIT" || { echo "Invalid Storage KV commit in VERSIONS.json." >&2; exit 2; }
+valley_require_git_commit "$SOURCE_TAG_OBJECT" || { echo "Invalid Storage KV tag object in VERSIONS.json." >&2; exit 2; }
+[[ "$EXPECTED_CHAIN_ID" =~ ^[0-9]+$ ]] || { echo "Invalid EVM chain ID in VERSIONS.json." >&2; exit 2; }
+[[ "$RUST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid Rust version in VERSIONS.json." >&2; exit 2; }
+
+KV_DIR="${ZGS_KV_HOME:-$HOME/0g-storage-kv}"
+SERVICE_NAME="${ZGS_KV_SERVICE_NAME:-zgskv}"
+LOG_CONTRACT_ADDRESS="0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"
+DEFAULT_SYNC_BLOCK="326165"
+
+validate_service_name() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9_.@-]+$ ]]
 }
 
-# Function to prompt user to choose JSON-RPC endpoint
-choose_json_rpc_endpoint() {
-    echo "Choose your JSON-RPC endpoint:"
-    echo "1. Enter your own JSON-RPC endpoint"
-    echo "2. Use a public JSON-RPC endpoint"
-    read -p "Enter your choice (1/2): " JSON_RPC_CHOICE
+rpc_result() {
+    local endpoint=$1 method=$2
+    curl -fsS --connect-timeout 4 --max-time 10 \
+        -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":[],\"id\":1}" \
+        "$endpoint" 2>/dev/null | jq -r '.result // empty' 2>/dev/null || true
+}
 
-    if [ "$JSON_RPC_CHOICE" == "1" ]; then
-        read -p "Enter your JSON-RPC endpoint: " BLOCKCHAIN_RPC_ENDPOINT
-        BLOCK_NUMBER=$(query_block_number $BLOCKCHAIN_RPC_ENDPOINT)
-        echo "Latest block number for $BLOCKCHAIN_RPC_ENDPOINT: $BLOCK_NUMBER"
-        read -p "Do you want to continue with this RPC endpoint? (yes/no): " CONTINUE_CHOICE
-        if [ "$CONTINUE_CHOICE" != "yes" ]; then
-            choose_json_rpc_endpoint
-        fi
-    elif [ "$JSON_RPC_CHOICE" == "2" ]; then
-        echo "Available public JSON-RPC endpoints:"
-        echo "1. https://lightnode-json-rpc-mainnet-0g.grandvalleys.com [$(query_block_number https://lightnode-json-rpc-mainnet-0g.grandvalleys.com)]"
-        echo "2. https://evmrpc.0g.ai [$(query_block_number https://evmrpc.0g.ai)]"
-        read -p "Enter the number of your chosen public JSON-RPC endpoint: " PUBLIC_RPC_CHOICE
-
-        case $PUBLIC_RPC_CHOICE in
-            1) BLOCKCHAIN_RPC_ENDPOINT="https://lightnode-json-rpc-mainnet-0g.grandvalleys.com";;
-            2) BLOCKCHAIN_RPC_ENDPOINT="https://evmrpc.0g.ai";;
-            *) echo "Invalid choice. Exiting."; exit 1;;
-        esac
-    else
-        echo "Invalid choice. Exiting."; exit 1
+hex_to_dec() {
+    local value=$1
+    if [[ "$value" =~ ^0x[0-9a-fA-F]+$ ]]; then
+        printf '%d\n' "$((16#${value#0x}))"
+    elif [[ "$value" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$value"
     fi
 }
 
-# Prompt user for storage node URLs
-read -p "Enter storage node URLs (e.g., http://STORAGE_NODE_IP:5678,http://STORAGE_NODE_IP:5679): " ZGS_NODE
-echo "Current storage node URLs: $ZGS_NODE"
+validate_rpc_endpoint() {
+    local endpoint=$1 chain_raw chain_id block_raw block_number
+    [[ "$endpoint" =~ ^https?://[^[:space:]\"]+$ ]] || {
+        echo "RPC endpoint must be a non-whitespace http(s) URL." >&2
+        return 1
+    }
+    chain_raw=$(rpc_result "$endpoint" eth_chainId)
+    chain_id=$(hex_to_dec "$chain_raw")
+    [ "$chain_id" = "$EXPECTED_CHAIN_ID" ] || {
+        echo "RPC rejected: $endpoint reports chain ${chain_id:-unavailable}; expected $EXPECTED_CHAIN_ID." >&2
+        return 1
+    }
+    block_raw=$(rpc_result "$endpoint" eth_blockNumber)
+    block_number=$(hex_to_dec "$block_raw")
+    [[ "$block_number" =~ ^[0-9]+$ ]] || {
+        echo "RPC rejected: $endpoint did not return a usable block number." >&2
+        return 1
+    }
+    printf '%s\n' "$block_number"
+}
 
-# Prompt user to choose JSON-RPC endpoint
-choose_json_rpc_endpoint
+validate_storage_urls() {
+    local list=$1 url
+    IFS=',' read -r -a urls <<<"$list"
+    [ "${#urls[@]}" -gt 0 ] || return 1
+    for url in "${urls[@]}"; do
+        [[ "$url" =~ ^https?://[^[:space:],\"]+$ ]] || return 1
+    done
+}
 
-echo "Current JSON-RPC endpoint: $BLOCKCHAIN_RPC_ENDPOINT"
+escape_sed_replacement() {
+    local value=$1
+    value=${value//\\/\\\\}
+    value=${value//&/\\&}
+    value=${value//|/\\|}
+    printf '%s' "$value"
+}
 
-# Set contract type to turbo by default
-CONTRACT_TYPE="turbo"
-LOG_CONTRACT_ADDRESS="0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"
+set_toml_string() {
+    local file=$1 key=$2 value=$3 escaped
+    escaped=$(escape_sed_replacement "$value")
+    sed -i -E "s|^[[:space:]]*#?[[:space:]]*${key}[[:space:]]*=.*|${key} = \"${escaped}\"|" "$file"
+}
 
-# Standard contract logic (commented out for future use)
-#if [ "$CONTRACT_TYPE" == "standard" ]; then
-#    LOG_CONTRACT_ADDRESS="0x0460aA47b41a66694c0a73f667a1b795A5ED3556"
-#else
-#    echo "Invalid contract type. Please choose either 'turbo' or 'standard'."
-#    exit 1
-#fi
+set_toml_number() {
+    local file=$1 key=$2 value=$3
+    sed -i -E "s|^[[:space:]]*#?[[:space:]]*${key}[[:space:]]*=.*|${key} = ${value}|" "$file"
+}
 
-# 1. Install dependencies for building from source
+for tool in curl jq git cargo rustc systemctl sed grep; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "Required tool missing: $tool" >&2
+        if [ "$tool" = cargo ] || [ "$tool" = rustc ]; then
+            echo "Install Rust via a reviewed method first; Valley will not execute a mutable rustup bootstrap script." >&2
+        fi
+        exit 2
+    }
+done
+
+validate_service_name "$SERVICE_NAME" || { echo "Invalid Storage KV service name: $SERVICE_NAME" >&2; exit 2; }
+
+# Fresh-install boundary: do not overwrite an existing checkout or service.
+if [ -e "$KV_DIR" ] || systemctl cat "$SERVICE_NAME" >/dev/null 2>&1; then
+    echo "Fresh Storage KV install blocked: existing checkout or $SERVICE_NAME.service detected." >&2
+    echo "Use the managed Storage KV update path instead." >&2
+    exit 1
+fi
+
+read -r -p "Enter storage node URLs (comma-separated, e.g. http://127.0.0.1:5678,http://127.0.0.1:5679): " ZGS_NODE
+validate_storage_urls "$ZGS_NODE" || { echo "Invalid Storage node URL list." >&2; exit 1; }
+
+echo "Choose your mainnet JSON-RPC endpoint:"
+echo "1) Enter your own endpoint"
+echo "2) Grand Valley public endpoint"
+echo "3) Official 0G endpoint"
+while true; do
+    read -r -p "Enter 1, 2, or 3: " RPC_CHOICE
+    case "$RPC_CHOICE" in
+        1)
+            read -r -p "Enter your JSON-RPC endpoint: " BLOCKCHAIN_RPC_ENDPOINT
+            ;;
+        2)
+            BLOCKCHAIN_RPC_ENDPOINT="https://lightnode-json-rpc-mainnet-0g.grandvalleys.com"
+            ;;
+        3)
+            BLOCKCHAIN_RPC_ENDPOINT="https://evmrpc.0g.ai"
+            ;;
+        *)
+            echo "Invalid choice."
+            continue
+            ;;
+    esac
+    if BLOCK_NUMBER=$(validate_rpc_endpoint "$BLOCKCHAIN_RPC_ENDPOINT"); then
+        echo "RPC verified: chain ID $EXPECTED_CHAIN_ID, latest block $BLOCK_NUMBER."
+        break
+    fi
+    echo "Choose a different RPC endpoint."
+done
+
+read -r -p "Log sync start block [default: $DEFAULT_SYNC_BLOCK]: " ZGS_LOG_SYNC_BLOCK
+ZGS_LOG_SYNC_BLOCK=${ZGS_LOG_SYNC_BLOCK:-$DEFAULT_SYNC_BLOCK}
+[[ "$ZGS_LOG_SYNC_BLOCK" =~ ^[0-9]+$ ]] || { echo "Log sync start block must be an integer." >&2; exit 1; }
+
+RPC_LISTEN_ADDRESS="127.0.0.1:6789"
+read -r -p "Expose Storage KV RPC publicly on 0.0.0.0:6789? (y/N): " PUBLIC_RPC
+if [[ "$PUBLIC_RPC" =~ ^[Yy]$ ]]; then
+    RPC_LISTEN_ADDRESS="0.0.0.0:6789"
+fi
+
+STAGE_ROOT=$(mktemp -d "$HOME/.valley-zgskv-stage.XXXXXX")
+STAGE_SRC="$STAGE_ROOT/source"
+trap 'rm -rf "$STAGE_ROOT"' EXIT
+
+echo "Staging Storage KV $TARGET_VERSION from immutable source before activation..."
+git clone --filter=blob:none --no-checkout "${KV_REPO}.git" "$STAGE_SRC"
+git -C "$STAGE_SRC" fetch --force origin "refs/tags/${SOURCE_TAG}:refs/tags/${SOURCE_TAG}"
+
+actual_tag_object=$(git -C "$STAGE_SRC" rev-parse "refs/tags/${SOURCE_TAG}")
+actual_tag_commit=$(git -C "$STAGE_SRC" rev-parse "refs/tags/${SOURCE_TAG}^{commit}")
+[ "$actual_tag_object" = "$SOURCE_TAG_OBJECT" ] || {
+    echo "Storage KV tag object verification failed." >&2
+    exit 1
+}
+[ "$actual_tag_commit" = "$TARGET_COMMIT" ] || {
+    echo "Storage KV tag-to-commit verification failed." >&2
+    exit 1
+}
+
+git -C "$STAGE_SRC" checkout --detach "$TARGET_COMMIT"
+[ "$(git -C "$STAGE_SRC" rev-parse HEAD)" = "$TARGET_COMMIT" ] || {
+    echo "Storage KV source pin verification failed." >&2
+    exit 1
+}
+git -C "$STAGE_SRC" submodule update --init --recursive
+
+stage_toolchain=$(tr -d '[:space:]' < "$STAGE_SRC/rust-toolchain")
+[ "$stage_toolchain" = "$RUST_VERSION" ] || {
+    echo "Storage KV rust-toolchain drift: source requests ${stage_toolchain:-missing}, manifest requires $RUST_VERSION." >&2
+    exit 1
+}
+active_rust=$(cd "$STAGE_SRC" && rustc --version | awk '{print $2}')
+[ "$active_rust" = "$RUST_VERSION" ] || {
+    echo "Rust $RUST_VERSION is required for the managed Storage KV build; active version is ${active_rust:-unknown}." >&2
+    exit 1
+}
+
+echo "Installing OS build dependencies only after source/network preflight passed..."
 sudo apt-get update -y
-sudo apt-get install clang cmake build-essential -y
-sudo apt install git -y
-sudo apt install libssl-dev -y
-sudo apt install pkg-config -y
-sudo apt-get install protobuf-compiler -y
-sudo apt-get install clang -y
-sudo apt-get install llvm llvm-dev -y
+sudo apt-get install -y clang cmake build-essential git libssl-dev pkg-config protobuf-compiler llvm llvm-dev ca-certificates
 
-# 2. Install go
-cd $HOME && \
-ver="1.22.0" && \
-wget "https://golang.org/dl/go$ver.linux-amd64.tar.gz" && \
-sudo rm -rf /usr/local/go && \
-sudo tar -C /usr/local -xzf "go$ver.linux-amd64.tar.gz" && \
-rm "go$ver.linux-amd64.tar.gz" && \
-echo "export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin" >> ~/.bash_profile && \
-source ~/.bash_profile && \
-go version
+(cd "$STAGE_SRC" && cargo build --release --locked)
+STAGED_BINARY="$STAGE_SRC/target/release/zgs_kv"
+[ -x "$STAGED_BINARY" ] || { echo "Storage KV build did not produce zgs_kv." >&2; exit 1; }
+"$STAGED_BINARY" --help >/dev/null
 
-# 3. Install rustup
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+STAGED_CONFIG="$STAGE_SRC/run/config.toml"
+cp "$STAGE_SRC/run/config_example.toml" "$STAGED_CONFIG"
+set_toml_string "$STAGED_CONFIG" rpc_listen_address "$RPC_LISTEN_ADDRESS"
+set_toml_string "$STAGED_CONFIG" db_dir "db"
+set_toml_string "$STAGED_CONFIG" kv_db_dir "kv.DB"
+set_toml_string "$STAGED_CONFIG" log_config_file "log_config"
+set_toml_string "$STAGED_CONFIG" log_contract_address "$LOG_CONTRACT_ADDRESS"
+set_toml_string "$STAGED_CONFIG" zgs_node_urls "$ZGS_NODE"
+set_toml_number "$STAGED_CONFIG" log_sync_start_block_number "$ZGS_LOG_SYNC_BLOCK"
+set_toml_string "$STAGED_CONFIG" blockchain_rpc_endpoint "$BLOCKCHAIN_RPC_ENDPOINT"
 
-# 4. Set vars
-echo 'export ZGS_LOG_SYNC_BLOCK="326165"' >> ~/.bash_profile
-# Export required variables
-echo "export ZGS_NODE=\"$ZGS_NODE\"" >> ~/.bash_profile
-echo "export ZGS_KV_VERSION=\"$TARGET_VERSION\"" >> ~/.bash_profile
-echo "export LOG_CONTRACT_ADDRESS=\"$LOG_CONTRACT_ADDRESS\"" >> ~/.bash_profile
-echo "export BLOCKCHAIN_RPC_ENDPOINT=\"$BLOCKCHAIN_RPC_ENDPOINT\"" >> ~/.bash_profile
+grep -Fqx 'rpc_enabled = true' "$STAGED_CONFIG" || { echo "Config validation failed: rpc_enabled." >&2; exit 1; }
+grep -Fqx "rpc_listen_address = \"$RPC_LISTEN_ADDRESS\"" "$STAGED_CONFIG" || { echo "Config validation failed: rpc_listen_address." >&2; exit 1; }
+grep -Fqx "blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"" "$STAGED_CONFIG" || { echo "Config validation failed: blockchain_rpc_endpoint." >&2; exit 1; }
+grep -Fqx "log_sync_start_block_number = $ZGS_LOG_SYNC_BLOCK" "$STAGED_CONFIG" || { echo "Config validation failed: log_sync_start_block_number." >&2; exit 1; }
+grep -Fqx "log_contract_address = \"$LOG_CONTRACT_ADDRESS\"" "$STAGED_CONFIG" || { echo "Config validation failed: log contract." >&2; exit 1; }
+grep -Fqx "zgs_node_urls = \"$ZGS_NODE\"" "$STAGED_CONFIG" || { echo "Config validation failed: Storage node URLs." >&2; exit 1; }
 
-source ~/.bash_profile
+echo
+echo "Prepared Storage KV $TARGET_VERSION ($TARGET_COMMIT)."
+echo "EVM chain ID: $EXPECTED_CHAIN_ID"
+echo "Blockchain RPC: $BLOCKCHAIN_RPC_ENDPOINT"
+echo "Storage nodes: $ZGS_NODE"
+echo "KV RPC bind: $RPC_LISTEN_ADDRESS"
+echo "No service or Storage KV checkout has been installed yet."
+read -r -p "Type ACTIVATE-ZGSKV to install and start the service: " ACTIVATE_CONFIRM
+[ "$ACTIVATE_CONFIRM" = "ACTIVATE-ZGSKV" ] || {
+    echo "Activation cancelled. Staged files will be removed."
+    exit 0
+}
 
-echo -e "\n\033[31mCHECK YOUR STORAGE KV VARIABLES\033[0m\n\nStorage KV Version: $TARGET_VERSION\nZGS_NODE: $ZGS_NODE\nLOG_CONTRACT_ADDRESS: $LOG_CONTRACT_ADDRESS\nZGS_LOG_SYNC_BLOCK: $ZGS_LOG_SYNC_BLOCK\nBLOCKCHAIN_RPC_ENDPOINT: $BLOCKCHAIN_RPC_ENDPOINT\n\n" "\033[3m\"Let's Buidl 0G Together\" - Grand Valley\033[0m"
+mkdir -p "$(dirname "$KV_DIR")"
+mv "$STAGE_SRC" "$KV_DIR"
 
-# 5. Download binary
-cd $HOME
-git clone "$KV_REPO.git" "$HOME/0g-storage-kv"
-cd $HOME/0g-storage-kv
-git stash
-git fetch --all --tags
-git checkout --detach "$TARGET_COMMIT"
-[ "$(git rev-parse HEAD)" = "$TARGET_COMMIT" ] || { echo "Storage KV source pin verification failed." >&2; exit 1; }
-git submodule update --init --recursive
-sudo apt install cargo
-
-# Build the binary
-cargo build --release
-
-# 6. Copy a config_example.toml file
-cp $HOME/0g-storage-kv/run/config_example.toml $HOME/0g-storage-kv/run/config.toml
-
-# 7. Update storage KV configuration
-sed -i '
-s|^\s*#\?\s*rpc_enabled\s*=.*|rpc_enabled = true|
-s|^\s*#\?\s*rpc_listen_address\s*=.*|rpc_listen_address = "0.0.0.0:6789"|
-s|^\s*#\?\s*db_dir\s*=.*|db_dir = "db"|
-s|^\s*#\?\s*kv_db_dir\s*=.*|kv_db_dir = "kv.DB"|
-s|^\s*#\?\s*log_config_file\s*=.*|log_config_file = "log_config"|
-s|^\s*#\?\s*log_contract_address\s*=.*|log_contract_address = "'"$LOG_CONTRACT_ADDRESS"'"|
-s|^\s*#\?\s*zgs_node_urls\s*=.*|zgs_node_urls = "'"$ZGS_NODE"'"|
-s|^\s*#\?\s*log_sync_start_block_number\s*=.*|log_sync_start_block_number = '"$ZGS_LOG_SYNC_BLOCK"'|
-s|^\s*#\?\s*blockchain_rpc_endpoint\s*=.*|blockchain_rpc_endpoint = "'"$BLOCKCHAIN_RPC_ENDPOINT"'"|
-' $HOME/0g-storage-kv/run/config.toml
-
-# 8. Create service
-sudo tee /etc/systemd/system/zgskv.service > /dev/null <<EOF
+UNIT_TMP=$(mktemp)
+cat > "$UNIT_TMP" <<EOF_UNIT
 [Unit]
-Description=zgskv KV
-After=network.target
+Description=0G Storage KV
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 User=$USER
-WorkingDirectory=$HOME/0g-storage-kv/run
-ExecStart=$HOME/0g-storage-kv/target/release/zgs_kv --config $HOME/0g-storage-kv/run/config.toml
+WorkingDirectory=$KV_DIR/run
+ExecStart=$KV_DIR/target/release/zgs_kv --config $KV_DIR/run/config.toml --log $KV_DIR/run/log_config
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65535
@@ -156,21 +256,22 @@ SyslogIdentifier=zgs_kv
 
 [Install]
 WantedBy=multi-user.target
-EOF
-
-# 9. Start the node
-sudo systemctl daemon-reload && \
-sudo systemctl enable zgskv && \
-sudo systemctl restart zgskv
-
-# 10. Check the logs
-echo "To check the logs, use the command: sudo journalctl -u zgskv -fn 100 -o cat"
-
-# 11. Confirmation message for installation completion
-if systemctl is-active --quiet zgskv; then
-    echo "Storage KV installation and services started successfully!"
-else
-    echo "Storage KV installation failed. Please check the logs for more information."
+EOF_UNIT
+sudo install -m 0644 "$UNIT_TMP" "/etc/systemd/system/${SERVICE_NAME}.service"
+rm -f "$UNIT_TMP"
+sudo systemctl daemon-reload
+if ! sudo systemctl enable --now "$SERVICE_NAME"; then
+    sudo systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
+    echo "Storage KV activation failed; service was left disabled. Inspect journalctl before retrying." >&2
+    exit 1
 fi
+systemctl is-active --quiet "$SERVICE_NAME" || {
+    sudo systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
+    echo "Storage KV service did not remain active; it was disabled." >&2
+    exit 1
+}
 
-echo "Lets Buidl 0G Together"
+echo "Storage KV $TARGET_VERSION installed from verified commit $TARGET_COMMIT."
+echo "Service: ${SERVICE_NAME}.service"
+echo "Logs: sudo journalctl -u $SERVICE_NAME -fn 100 -o cat"
+echo "Upstream v1.5.1 remains review_required and was not installed by this workflow."
