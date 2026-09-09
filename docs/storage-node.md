@@ -30,6 +30,8 @@ Select **Storage Node** → **Deploy Storage Node** and review every prompt. The
 
 The managed installer needs an EVM RPC endpoint but does not collect a storage miner key. It stages the reviewed source, non-secret configuration, and a disabled/stopped service unit, then stops before the upstream secret-dependent mining step.
 
+The managed `v1.1.0` source commit predates upstream's `run/config-mainnet-turbo.toml`. To avoid silently mixing the pinned binary with a mutable config from upstream `main`, Baconvalley pins the official mainnet config separately by upstream commit and Git blob in [`../VERSIONS.json`](../VERSIONS.json). The installer verifies both the `v1.1.0` tag-to-commit mapping and the exact config blob before installing build dependencies, building, or writing the service unit.
+
 ## Miner-key boundary
 
 The managed Storage target still requires raw miner-key material through upstream configuration or command-line interfaces. Valley does not collect or inject that raw key. On a fresh installation the service is not enabled or started.
@@ -82,4 +84,4 @@ Do not delete the old database until the replacement is proven healthy.
 - [Storage KV Guide](storage-kv.md)
 - [Snapshot Application](snapshots.md)
 
-last updated by: John
+last updated by: Baconvalley

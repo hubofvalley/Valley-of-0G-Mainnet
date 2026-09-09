@@ -13,6 +13,9 @@ jq -e '.source_of_truth | startswith("VERSIONS.json;")' "$MANIFEST" >/dev/null |
 [ "$(jq -r '.components.storage_node.version_current' "$MANIFEST")" = 'v1.1.0' ] || fail "Storage managed version drift"
 [ "$(jq -r '.components.storage_node.source_tag' "$MANIFEST")" = 'v1.1.0' ] || fail "Storage source tag drift"
 [ "$(jq -r '.components.storage_node.pinned_commit' "$MANIFEST")" = 'e41726de7825b9e8e6eeb7802f40308d880089b2' ] || fail "Storage v1.1.0 commit drift"
+[ "$(jq -r '.components.storage_node.config_source.path' "$MANIFEST")" = 'run/config-mainnet-turbo.toml' ] || fail "Storage mainnet config path drift"
+[ "$(jq -r '.components.storage_node.config_source.commit' "$MANIFEST")" = 'cf11e1b68a32021a1b18d3ba1541ef32ea449e39' ] || fail "Storage mainnet config commit drift"
+[ "$(jq -r '.components.storage_node.config_source.blob_sha' "$MANIFEST")" = '7149c7139909f869a8a7f07ce60e8a2cd52cfcb4' ] || fail "Storage mainnet config blob drift"
 
 [ "$(jq -r '.components.storage_kv.version_current' "$MANIFEST")" = 'v1.4.0' ] || fail "Storage KV managed version drift"
 [ "$(jq -r '.components.storage_kv.source_tag' "$MANIFEST")" = 'v1.4.0' ] || fail "Storage KV source tag drift"
@@ -27,7 +30,7 @@ jq -e '.source_of_truth | startswith("VERSIONS.json;")' "$MANIFEST" >/dev/null |
 [ "$(jq -r '.components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")" = 'aa515a403ca2ac9d9321166942631ec158eeda822f3fc11263cd3bdb405c74c1' ] || fail "Alignment artifact digest drift"
 while IFS= read -r value; do
     [[ "$value" =~ ^[0-9a-f]{40}$ ]] || fail "invalid commit pin: $value"
-done < <(jq -r '.components.storage_node.pinned_commit, .components.storage_kv.pinned_commit' "$MANIFEST")
+done < <(jq -r '.components.storage_node.pinned_commit, .components.storage_node.config_source.commit, .components.storage_node.config_source.blob_sha, .components.storage_kv.pinned_commit' "$MANIFEST")
 while IFS= read -r value; do
     [[ "$value" =~ ^[0-9a-f]{64}$ ]] || fail "invalid artifact digest: $value"
 done < <(jq -r '.components.validator.bundle.release_artifact_sha256, .components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")
@@ -49,6 +52,24 @@ for rel in "${covered[@]}"; do
     file="$ROOT/$rel"
     grep -Fq 'valley_manifest_get' "$file" || fail "$rel does not consume VERSIONS.json"
 done
+
+STORAGE_INSTALL="$ROOT/resources/0g_storage_node_install.sh"
+grep -Fq '.components.storage_node.source_tag_object' "$STORAGE_INSTALL" || fail "Storage installer does not verify the reviewed tag object"
+grep -Fq '.components.storage_node.config_source.commit' "$STORAGE_INSTALL" || fail "Storage installer does not consume the config commit pin"
+grep -Fq '.components.storage_node.config_source.blob_sha' "$STORAGE_INSTALL" || fail "Storage installer does not consume the config blob pin"
+grep -Fq 'rev-parse "${CONFIG_SOURCE_COMMIT}:${CONFIG_SOURCE_PATH}"' "$STORAGE_INSTALL" || fail "Storage installer does not verify the config Git blob"
+grep -Fq 'show "${CONFIG_SOURCE_COMMIT}:${CONFIG_SOURCE_PATH}" > "$STAGED_CONFIG"' "$STORAGE_INSTALL" || fail "Storage installer does not extract the reviewed config artifact"
+if grep -Fq 'cp "$NODE_DIR/run/config-mainnet-turbo.toml"' "$STORAGE_INSTALL"; then
+    fail "Storage installer still assumes the v1.1.0 checkout contains the later mainnet config"
+fi
+
+config_verify_line=$(grep -n 'Storage mainnet config artifact verification failed' "$STORAGE_INSTALL" | head -n1 | cut -d: -f1)
+apt_line=$(grep -n 'sudo apt-get update -y' "$STORAGE_INSTALL" | head -n1 | cut -d: -f1)
+build_line=$(grep -n 'cargo build --release --locked' "$STORAGE_INSTALL" | head -n1 | cut -d: -f1)
+move_line=$(grep -n 'mv "$STAGE_SRC" "$NODE_DIR"' "$STORAGE_INSTALL" | head -n1 | cut -d: -f1)
+[ "$config_verify_line" -lt "$apt_line" ] || fail "Storage config pin must be verified before OS package mutation"
+[ "$apt_line" -lt "$build_line" ] || fail "Storage build ordering is unexpected"
+[ "$build_line" -lt "$move_line" ] || fail "Storage checkout is installed before the verified build is ready"
 
 if grep -RInE --include='*.sh' 'git[[:space:]]+checkout[[:space:]]+main|git[[:space:]]+clone[[:space:]]+-b|@latest|99c91d95a1d664ffdc9700ef492a00bd76c9c5d1' "$ROOT/resources"; then
     fail "mutable/incorrect version selector remains in resources"
