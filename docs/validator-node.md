@@ -22,7 +22,16 @@ Launch the menu:
 bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
 ```
 
-Select **Validator Node** → **Deploy/re-Deploy Validator Node**, choose Geth or Reth, and follow the prompts.
+Select **Validator Node** → **Deploy Validator Node**, choose Geth or Reth, and follow the prompts.
+
+The deploy flow is intentionally **not** a re-deploy path for an existing
+validator. If the managed consensus key or `priv_validator_state.json` already
+exists, Baconvalley refuses before destructive cleanup. Use **Manage Validator
+Node** for normal bundle updates and the documented migration flow for
+execution-client changes. For an intentional rebuild, stop the old signer and
+make a verified offline backup of both the consensus key and signing-state file
+before moving the existing data root out of the installer path. Never run two
+active nodes with the same consensus key.
 
 The current bundle and shipped component versions are recorded in [`../VERSIONS.json`](../VERSIONS.json). The bundle installs:
 
@@ -117,4 +126,4 @@ Test update and rollback procedures on a non-validator or staging node first.
 - [Snapshot Application](snapshots.md)
 - [Node Scheduler](scheduler.md)
 
-last updated by: John
+last updated by: Baconvalley

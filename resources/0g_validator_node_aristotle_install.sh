@@ -42,6 +42,31 @@ while true; do
   fi
 done
 
+# A validator re-deploy must never silently replace consensus signing material.
+# This deploy flow removes the managed data root below and then initializes a
+# fresh priv_validator_key/state pair, so fail closed before any cleanup when a
+# managed validator identity or its anti-double-sign state already exists. Only
+# file existence is checked; Valley never reads the secret key contents here.
+VALIDATOR_KEY_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/config/priv_validator_key.json"
+VALIDATOR_STATE_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/data/priv_validator_state.json"
+if [[ "$NODE_TYPE" == "validator" ]] && { [[ -e "$VALIDATOR_KEY_FILE" ]] || [[ -e "$VALIDATOR_STATE_FILE" ]]; }; then
+  cat >&2 <<EOF
+Baconvalley safety guard: existing validator signing material was detected.
+This deploy flow removes $HOME/.0gchaind and initializes a new consensus key/state,
+so it is not a safe re-deploy path for an existing validator.
+
+Use Manage Validator Node for normal bundle updates or the documented migration
+workflow for execution-client changes. For an intentional rebuild, stop the old
+signer, make a verified offline backup of BOTH files below, and move the existing
+data root out of $HOME/.0gchaind before running this deploy flow again:
+  $VALIDATOR_KEY_FILE
+  $VALIDATOR_STATE_FILE
+
+Do not run two active nodes with the same consensus key.
+EOF
+  exit 1
+fi
+
 # ===== CHOOSE EXECUTION CLIENT =====
 echo -e "\n${CYAN}Select Execution Client:${RESET}"
 echo -e "  ${GREEN}1) Geth${RESET}  - Original 0G execution client (stable, battle-tested)"

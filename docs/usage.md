@@ -26,7 +26,7 @@ Run it as the user that owns the 0G node files. The script stores environment va
 
 | Option | What it does | When to use | Destructive / risk |
 |---|---|---|---|
-| 1a. Deploy/re-Deploy Validator Node | Installs or reinstalls the 0G validator stack. | First setup or clean redeploy. | Yes - may replace services and data. Backup keys first. |
+| 1a. Deploy Validator Node | Fresh-installs the 0G validator stack. Refuses when managed validator signing material already exists. | First validator setup; use Manage Validator Node for updates. | High - replaces services/data on a fresh target. Existing validator key/state blocks the flow. |
 | 1b. Manage Validator Node | Opens validator node management/update flow. | Validator binary or service maintenance. | Medium. |
 | 1c. Apply Validator Node Snapshot | Applies validator node snapshot. | Speed up sync or recover data. | Yes - can replace chain data. |
 | 1d. Add Peers | Updates validator node peers. | Peer connectivity issues. | Low - config change. |

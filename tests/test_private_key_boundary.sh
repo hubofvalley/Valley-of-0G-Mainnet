@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 MAIN="$ROOT/resources/valleyof0G.sh"
+VALIDATOR_INSTALL="$ROOT/resources/0g_validator_node_aristotle_install.sh"
 STORAGE_INSTALL="$ROOT/resources/0g_storage_node_install.sh"
 STORAGE_UPDATE="$ROOT/resources/0g_storage_node_update.sh"
 STORAGE_CHANGE="$ROOT/resources/0g_storage_node_change.sh"
@@ -23,6 +24,19 @@ if grep -Fq 'function ensure_private_key()' "$MAIN"; then
     fail "legacy private-key loader remains callable"
 fi
 grep -Fq 'Legacy PRIVATE_KEY entry detected' "$MAIN" || fail "legacy persistence warning is missing"
+
+# A fresh deploy script must not silently destroy an existing consensus key or
+# its last-sign state. The guard must inspect only file existence and execute
+# before the destructive managed-data-root cleanup.
+grep -Fq 'VALIDATOR_KEY_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/config/priv_validator_key.json"' "$VALIDATOR_INSTALL" || fail "validator deploy does not track the managed consensus key path"
+grep -Fq 'VALIDATOR_STATE_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/data/priv_validator_state.json"' "$VALIDATOR_INSTALL" || fail "validator deploy does not track the managed signing-state path"
+grep -Fq 'Baconvalley safety guard: existing validator signing material was detected.' "$VALIDATOR_INSTALL" || fail "validator deploy fail-closed guard is missing"
+grep -Fq 'Do not run two active nodes with the same consensus key.' "$VALIDATOR_INSTALL" || fail "validator deploy double-sign safety warning is missing"
+
+guard_line=$(grep -nF 'Baconvalley safety guard: existing validator signing material was detected.' "$VALIDATOR_INSTALL" | head -n1 | cut -d: -f1)
+cleanup_line=$(grep -nF 'rm -rf $HOME/.0gchaind' "$VALIDATOR_INSTALL" | head -n1 | cut -d: -f1)
+[[ "$guard_line" =~ ^[0-9]+$ && "$cleanup_line" =~ ^[0-9]+$ ]] || fail "cannot locate validator guard/cleanup ordering"
+(( guard_line < cleanup_line )) || fail "validator signing-material guard runs after destructive cleanup"
 
 # Menu UX remains present even where the unsafe automated signer path is now
 # fail-safe/manual.
