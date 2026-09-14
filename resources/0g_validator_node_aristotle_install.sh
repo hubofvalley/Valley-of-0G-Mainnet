@@ -46,7 +46,7 @@ done
 # This deploy flow removes the managed data root below and then initializes a
 # fresh priv_validator_key/state pair, so fail closed before any cleanup when a
 # managed validator identity or its anti-double-sign state already exists. Only
-# file existence is checked; Valley never reads the secret key contents here.
+# file existence is checked; Baconvalley never reads the secret key contents here.
 VALIDATOR_KEY_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/config/priv_validator_key.json"
 VALIDATOR_STATE_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/data/priv_validator_state.json"
 if [[ "$NODE_TYPE" == "validator" ]] && { [[ -e "$VALIDATOR_KEY_FILE" ]] || [[ -e "$VALIDATOR_STATE_FILE" ]]; }; then
