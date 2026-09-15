@@ -4,6 +4,8 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 installer="$repo_root/resources/0g_validator_node_aristotle_install.sh"
 migration="$repo_root/resources/0g_geth_to_reth_migrate.sh"
+storage_installer="$repo_root/resources/0g_storage_node_install.sh"
+storage_updater="$repo_root/resources/0g_storage_node_update.sh"
 
 require() {
   grep -Fq -- "$1" "$2" || {
@@ -31,5 +33,14 @@ if [ "$(grep -Fc -- '--authrpc.addr ${AUTHRPC_ADDR}' "$migration")" -ne 2 ]; the
   echo "Migration must generate two loopback-only AuthRPC unit paths." >&2
   exit 1
 fi
+
+# Storage HTTP RPC is intentionally public, while admin RPC and gRPC must be
+# explicit. Fresh installs default gRPC to loopback; existing-node updates fail
+# closed if the old config relies on upstream's implicit 0.0.0.0:50051 default.
+require 'listen_address = "0.0.0.0:5678"' "$storage_installer"
+require 'listen_address_admin = "127.0.0.1:5679"' "$storage_installer"
+require 'listen_address_grpc = "127.0.0.1:50051"' "$storage_installer"
+require 'Storage update refused: listen_address_grpc is not explicitly configured.' "$storage_updater"
+require 'Upstream defaults the missing setting to 0.0.0.0:50051.' "$storage_updater"
 
 echo "Network exposure default checks passed."

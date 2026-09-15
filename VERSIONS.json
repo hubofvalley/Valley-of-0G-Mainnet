@@ -2,8 +2,8 @@
   "schema_version": "1.1",
   "network": "0g-mainnet",
   "human_name": "Valley of 0G — Mainnet",
-  "last_updated": "2026-09-02",
-  "source_of_truth": "VERSIONS.json; managed installers/updaters/migrations consume immutable upstream refs and release digests from this manifest",
+  "last_updated": "2026-09-15",
+  "source_of_truth": "VERSIONS.json; managed installers/updaters/migrations consume immutable upstream refs, config-artifact pins, and release digests from this manifest",
   "verification_status": "live_validated_partial",
   "verification_note": "Validator was live-validated on a Grand Valley RPC node: Aristotle bundle v1.0.6, reth 1.8.1 active, geth 1.15.11 inactive (2026-06-26); 0gchaind e8e1071 matched the official v1.0.6 release asset by SHA-256 (2026-07-13). Version model: bundle (v1.0.6, upgrade deadline applies) plus ships (component versions shipped inside the bundle). gv-ops compares live binaries against bundle.ships, not against the bundle version. Storage/storage-kv/alignment are not installed on the validated node yet, so those values are still seeded from scripts (needs_live_verification).",
   "chain": {
@@ -77,19 +77,27 @@
         "zgs_node"
       ],
       "release_repo": "https://github.com/0gfoundation/0g-storage-node",
-      "version_current": "v1.1.0",
-      "version_source": "built from immutable upstream v1.1.0 peeled commit",
+      "version_current": "v1.2.0",
+      "version_source": "binary and mainnet config pinned to the same immutable upstream v1.2.0 release commit; the config is additionally verified by exact Git blob before build/install",
       "services": [
         "zgs"
       ],
       "config": "$HOME/0g-storage-node/run/config-mainnet.toml",
       "install_script": "resources/0g_storage_node_install.sh",
       "update_script": "resources/0g_storage_node_update.sh",
-      "source_tag": "v1.1.0",
-      "source_tag_object": "eaa9149d54bba0c47529f543a4c330a6bc3bbb85",
-      "pinned_commit": "e41726de7825b9e8e6eeb7802f40308d880089b2",
+      "source_tag": "v1.2.0",
+      "source_tag_object": "0445ef6a3a403468f14a4ce654bc2ecb0cfe9acc",
+      "source_tag_note": "v1.2.0 is a lightweight tag, so source_tag_object records the immutable tag ref target commit rather than an annotated tag object.",
+      "pinned_commit": "0445ef6a3a403468f14a4ce654bc2ecb0cfe9acc",
+      "config_source": {
+        "path": "run/config-mainnet-turbo.toml",
+        "commit": "0445ef6a3a403468f14a4ce654bc2ecb0cfe9acc",
+        "blob_sha": "1b7abfc8029867f442f6131c7acf3f1ea4b85a95",
+        "compatibility_note": "Upstream v1.2.0 natively ships the mainnet turbo config. Valley pins the config blob from the same reviewed release commit and overrides the gRPC listener to loopback by default instead of inheriting upstream's public 0.0.0.0:50051 default."
+      },
       "upstream_latest": "v1.2.0",
-      "upgrade_status": "review_required"
+      "upgrade_status": "current_needs_live_verification",
+      "upgrade_note": "v1.2.0 is the current upstream release and fixes certain data inconsistency issues. Valley pins its source and mainnet config to the same release commit; live runtime validation is still pending."
     },
     "storage_kv": {
       "name": "0g-storage-kv",

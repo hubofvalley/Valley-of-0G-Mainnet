@@ -22,12 +22,26 @@ if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$CONFIG_F
     echo "Upstream Storage currently requires raw key material for mining, so this residual persistent-secret limitation remains operator-owned."
 fi
 
+# Upstream defaults gRPC to 0.0.0.0:50051 when the setting is omitted. Require
+# an explicit operator choice before an update can restart the service, so an
+# old config cannot silently gain a public listener after a binary upgrade.
+if ! grep -Eq '^[[:space:]]*listen_address_grpc[[:space:]]*=[[:space:]]*"[^\"]+"' "$CONFIG_FILE"; then
+    echo "Storage update refused: listen_address_grpc is not explicitly configured." >&2
+    echo "Upstream defaults the missing setting to 0.0.0.0:50051." >&2
+    echo "Set listen_address_grpc under [rpc] explicitly (recommended: 127.0.0.1:50051), review firewall/proxy policy, then retry." >&2
+    exit 1
+fi
+if grep -Eq '^[[:space:]]*listen_address_grpc[[:space:]]*=[[:space:]]*"(0\.0\.0\.0|\[::\]):[0-9]+"' "$CONFIG_FILE"; then
+    echo "WARNING: Storage gRPC is explicitly configured on a wildcard/public listener."
+    echo "Proceeding because the exposure is explicit; ensure firewall/rate-limit policy is intentional."
+fi
+
 cd "$NODE_DIR"
 git fetch --all --tags
 git checkout --detach "$TARGET_COMMIT"
 [ "$(git rev-parse HEAD)" = "$TARGET_COMMIT" ] || { echo "Storage source pin verification failed." >&2; exit 1; }
 git submodule update --init --recursive
-cargo build --release
+cargo build --release --locked
 
 sudo systemctl stop "$SERVICE_NAME"
 sudo systemctl daemon-reload
