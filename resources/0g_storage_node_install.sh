@@ -123,9 +123,9 @@ git -C "$STAGE_SRC" fetch --force origin "refs/tags/${TARGET_TAG}:refs/tags/${TA
     exit 1
 }
 
-# The managed v1.1.0 binary predates the official mainnet turbo config. Fetch
-# only the separately reviewed config commit and verify the exact Git blob
-# before using that file; do not consume a mutable config from upstream main.
+# Verify the exact mainnet config blob from the reviewed release commit before
+# using it. This prevents mutable upstream config drift while keeping the binary
+# and network configuration on the same v1.2.0 source revision.
 git -C "$STAGE_SRC" fetch origin "$CONFIG_SOURCE_COMMIT"
 ACTUAL_CONFIG_BLOB=$(git -C "$STAGE_SRC" rev-parse "${CONFIG_SOURCE_COMMIT}:${CONFIG_SOURCE_PATH}" 2>/dev/null || true)
 [ "$ACTUAL_CONFIG_BLOB" = "$CONFIG_SOURCE_BLOB" ] || {
@@ -153,6 +153,7 @@ git -C "$STAGE_SRC" show "${CONFIG_SOURCE_COMMIT}:${CONFIG_SOURCE_PATH}" > "$STA
 sed -i -E \
     -e 's|^[[:space:]]*#?[[:space:]]*listen_address[[:space:]]*=.*|listen_address = "0.0.0.0:5678"|' \
     -e 's|^[[:space:]]*#?[[:space:]]*listen_address_admin[[:space:]]*=.*|listen_address_admin = "127.0.0.1:5679"|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*listen_address_grpc[[:space:]]*=.*|listen_address_grpc = "127.0.0.1:50051"|' \
     -e 's|^[[:space:]]*#?[[:space:]]*log_sync_start_block_number[[:space:]]*=.*|log_sync_start_block_number = 2387557|' \
     -e "s|^[[:space:]]*#?[[:space:]]*blockchain_rpc_endpoint[[:space:]]*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|" \
     -e 's|^[[:space:]]*#?[[:space:]]*log_contract_address[[:space:]]*=.*|log_contract_address = "0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"|' \
@@ -170,6 +171,7 @@ grep -Fqx '[sync]' "$STAGED_CONFIG" || { echo "Config validation failed: [sync] 
 grep -Fqx 'auto_sync_enabled = true' "$STAGED_CONFIG" || { echo "Config validation failed: auto sync is not enabled." >&2; exit 1; }
 grep -Fqx 'listen_address = "0.0.0.0:5678"' "$STAGED_CONFIG" || { echo "Config validation failed: public RPC listener." >&2; exit 1; }
 grep -Fqx 'listen_address_admin = "127.0.0.1:5679"' "$STAGED_CONFIG" || { echo "Config validation failed: admin RPC listener." >&2; exit 1; }
+grep -Fqx 'listen_address_grpc = "127.0.0.1:50051"' "$STAGED_CONFIG" || { echo "Config validation failed: gRPC listener must default to loopback." >&2; exit 1; }
 grep -Fqx "blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"" "$STAGED_CONFIG" || { echo "Config validation failed: blockchain RPC." >&2; exit 1; }
 
 if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$STAGED_CONFIG"; then
@@ -204,5 +206,6 @@ rm -rf "$STAGE_ROOT"
 
 echo -e "${GREEN}Storage Node ${TARGET_VERSION} staged from immutable commit ${TARGET_COMMIT}.${RESET}"
 echo "Mainnet config verified from pinned upstream blob ${CONFIG_SOURCE_BLOB}."
+echo "Public Storage RPC remains on 0.0.0.0:5678; admin RPC and gRPC default to loopback only."
 echo "Service was NOT enabled or started because Valley does not handle the required raw miner key."
 echo "Review the official upstream secret requirement and configure/start the service manually only if you accept that residual upstream limitation."
