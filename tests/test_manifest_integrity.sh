@@ -19,6 +19,8 @@ jq -e '.source_of_truth | startswith("VERSIONS.json;")' "$MANIFEST" >/dev/null |
 [ "$(jq -r '.components.storage_node.config_source.blob_sha' "$MANIFEST")" = '1b7abfc8029867f442f6131c7acf3f1ea4b85a95' ] || fail "Storage mainnet config blob drift"
 jq -e '.components.storage_node.config_source.commit == .components.storage_node.pinned_commit' "$MANIFEST" >/dev/null || fail "Storage binary/config commits must stay coherent"
 [ "$(jq -r '.components.storage_node.upstream_latest' "$MANIFEST")" = 'v1.2.0' ] || fail "Storage upstream version drift"
+[ "$(jq -r '.components.storage_node.upgrade_status' "$MANIFEST")" = 'current_needs_live_verification' ] || fail "Storage live-verification status drift"
+[ "$(jq -r '.components.storage_node.needs_live_verification' "$MANIFEST")" = 'true' ] || fail "Storage must remain marked for live validation"
 
 [ "$(jq -r '.components.storage_kv.version_current' "$MANIFEST")" = 'v1.4.0' ] || fail "Storage KV managed version drift"
 [ "$(jq -r '.components.storage_kv.source_tag' "$MANIFEST")" = 'v1.4.0' ] || fail "Storage KV source tag drift"
