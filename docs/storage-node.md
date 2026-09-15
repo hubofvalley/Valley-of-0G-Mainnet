@@ -31,7 +31,7 @@ Select **Storage Node** → **Deploy Storage Node** and review every prompt. The
 
 The managed installer needs an EVM RPC endpoint but does not collect a storage miner key. It stages the reviewed source, non-secret configuration, and a disabled/stopped service unit, then stops before the upstream secret-dependent mining step.
 
-The managed target is upstream `v1.2.0`. Baconvalley pins the release tag/commit and the exact `run/config-mainnet-turbo.toml` Git blob in [`../VERSIONS.json`](../VERSIONS.json). Binary and mainnet config therefore come from the same immutable upstream release revision. The installer verifies those pins before installing build dependencies, builds with `cargo --locked`, and only moves the staged checkout into place after the build/config checks pass.
+The managed target is upstream `v1.2.0`. Baconvalley pins the release tag/commit and the exact `run/config-mainnet-turbo.toml` Git blob in [`../VERSIONS.json`](../VERSIONS.json). Binary and mainnet config therefore come from the same immutable upstream release revision. The installer verifies those pins before installing build dependencies, builds with `cargo --locked`, and only moves the staged checkout into place after the build/config checks pass. Runtime/live-node validation remains pending and is recorded explicitly in the manifest.
 
 Upstream defaults Storage gRPC to `0.0.0.0:50051` when the setting is omitted. Baconvalley overrides fresh installs to `127.0.0.1:50051` so gRPC is not exposed unintentionally. If an operator deliberately needs public gRPC, make that an explicit config/firewall/proxy decision and review the resulting attack surface before startup.
 
