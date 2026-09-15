@@ -1,556 +1,84 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# ==== CONFIG ====
-echo -e "\n--- 0G Mainnet Node Setup (Validator or RPC) ---"
-
-LOGO="
- __                                   
-/__ ._ _. ._   _|   \  / _. | |  _    
-\_| | (_| | | (_|    \/ (_| | | (/_ \/
-                                    /
-"
-echo "$LOGO"
-
-# Colours
-GREEN="\e[32m"; YELLOW="\e[33m"; CYAN="\e[36m"; RESET="\e[0m"
-
-# VERSIONS.json is the authority for the reviewed validator bundle artifact.
-command -v jq >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y jq; }
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-MANIFEST_LIB="${VALLEY_MANIFEST_LIB:-$SCRIPT_DIR/valley_manifest.sh}"
-[ -r "$MANIFEST_LIB" ] || { echo "Valley manifest loader not found: $MANIFEST_LIB" >&2; exit 2; }
-# shellcheck source=resources/valley_manifest.sh
-source "$MANIFEST_LIB"
-valley_manifest_init
-ARISTOTLE_VERSION=$(valley_manifest_get '.components.validator.bundle.version_current')
-ARISTOTLE_RELEASE_REF=$(valley_manifest_get '.components.validator.bundle.release_ref')
-ARISTOTLE_REPO=$(valley_manifest_get '.components.validator.bundle.release_repo')
-ARISTOTLE_ARTIFACT=$(valley_manifest_get '.components.validator.bundle.release_artifact')
-ARISTOTLE_SHA256=$(valley_manifest_get '.components.validator.bundle.release_artifact_sha256')
-valley_require_sha256 "$ARISTOTLE_SHA256" || { echo "Invalid Aristotle digest in VERSIONS.json." >&2; exit 2; }
-ARISTOTLE_URL="${ARISTOTLE_REPO}/releases/download/${ARISTOTLE_RELEASE_REF}/${ARISTOTLE_ARTIFACT}"
-ARISTOTLE_EXTRACT_DIR="aristotle-${ARISTOTLE_VERSION}"
+IMPL_NAME="0g_validator_node_aristotle_install_impl.sh"
+LOCAL_IMPL="$SCRIPT_DIR/$IMPL_NAME"
+MANAGED_DATA_ROOT="$HOME/.0gchaind"
+VALIDATOR_KEY_FILE="$MANAGED_DATA_ROOT/0g-home/0gchaind-home/config/priv_validator_key.json"
+VALIDATOR_STATE_FILE="$MANAGED_DATA_ROOT/0g-home/0gchaind-home/data/priv_validator_state.json"
 
-# ===== CHOOSE NODE TYPE =====
-while true; do
-  read -p "Deploy type? (validator/rpc): " NODE_TYPE
-  NODE_TYPE=$(echo "$NODE_TYPE" | tr '[:upper:]' '[:lower:]')
-  if [[ "$NODE_TYPE" == "validator" || "$NODE_TYPE" == "rpc" ]]; then
-    break
-  else
-    echo "Please type exactly 'validator' or 'rpc'."
-  fi
-done
+path_exists() {
+    [[ -e "$1" || -L "$1" ]]
+}
 
-# A validator re-deploy must never silently replace consensus signing material.
-# This deploy flow removes the managed data root below and then initializes a
-# fresh priv_validator_key/state pair, so fail closed before any cleanup when a
-# managed validator identity or its anti-double-sign state already exists. Only
-# file existence is checked; Baconvalley never reads the secret key contents here.
-VALIDATOR_KEY_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/config/priv_validator_key.json"
-VALIDATOR_STATE_FILE="$HOME/.0gchaind/0g-home/0gchaind-home/data/priv_validator_state.json"
-if [[ "$NODE_TYPE" == "validator" ]] && { [[ -e "$VALIDATOR_KEY_FILE" ]] || [[ -e "$VALIDATOR_STATE_FILE" ]]; }; then
-  cat >&2 <<EOF
+# This public deploy entrypoint is fresh-install only. The implementation later
+# stops services, removes the managed data root, initializes a new consensus
+# identity/state pair, and starts CL/EL. Refuse before node-type selection so an
+# existing validator cannot bypass the guard by choosing RPC mode.
+if path_exists "$VALIDATOR_KEY_FILE" || path_exists "$VALIDATOR_STATE_FILE"; then
+    cat >&2 <<EOF
 Baconvalley safety guard: existing validator signing material was detected.
-This deploy flow removes $HOME/.0gchaind and initializes a new consensus key/state,
-so it is not a safe re-deploy path for an existing validator.
 
-Use Manage Validator Node for normal bundle updates or the documented migration
-workflow for execution-client changes. For an intentional rebuild, stop the old
-signer, make a verified offline backup of BOTH files below, and move the existing
-data root out of $HOME/.0gchaind before running this deploy flow again:
+This fresh deploy flow is destructive and will not replace an existing consensus
+key or priv_validator_state.json. The guard runs before validator/RPC selection,
+so changing deploy type cannot bypass it.
+
+Use Manage Validator Node for reviewed bundle updates and the documented
+execution-client migration flow for EL changes. Recovery or rebuild of an
+existing validator identity requires preserving BOTH the consensus key and the
+last-sign state and ensuring only one signer is active; this installer does not
+automate that recovery.
+
+Protected paths:
   $VALIDATOR_KEY_FILE
   $VALIDATOR_STATE_FILE
-
-Do not run two active nodes with the same consensus key.
 EOF
-  exit 1
+    exit 1
 fi
 
-# ===== CHOOSE EXECUTION CLIENT =====
-echo -e "\n${CYAN}Select Execution Client:${RESET}"
-echo -e "  ${GREEN}1) Geth${RESET}  - Original 0G execution client (stable, battle-tested)"
-echo -e "  ${GREEN}2) Reth${RESET}  - High-performance Rust execution client (faster sync, lower resource usage)"
-while true; do
-  read -p "Enter your choice (1 or 2): " EL_CHOICE
-  case "$EL_CHOICE" in
-    1) EXEC_CLIENT="geth"; break ;;
-    2) EXEC_CLIENT="reth"; break ;;
-    *) echo "Please enter 1 or 2." ;;
-  esac
-done
-echo -e "Selected execution client: ${CYAN}${EXEC_CLIENT}${RESET}"
+if path_exists "$MANAGED_DATA_ROOT"; then
+    cat >&2 <<EOF
+Baconvalley safety guard: existing managed 0G node data was detected at:
+  $MANAGED_DATA_ROOT
 
-# ===== PRUNING MODE (Reth only) =====
-if [ "$EXEC_CLIENT" = "reth" ]; then
-  echo -e "\n${CYAN}Select Pruning Mode for Reth:${RESET}"
-  echo -e "  ${GREEN}1) Pruned${RESET}  - Both CL & EL prune old data (efficient storage, recommended for RPC)"
-  echo -e "  ${GREEN}2) Archive${RESET} - No pruning, keep full history (requires more storage)"
-  while true; do
-    read -p "Enter your choice (1 or 2) [default: 1]: " PRUNE_CHOICE
-    PRUNE_CHOICE=${PRUNE_CHOICE:-1}
-    case "$PRUNE_CHOICE" in
-      1) ENABLE_RETH_PRUNE="yes"; break ;;
-      2) ENABLE_RETH_PRUNE="no"; break ;;
-      *) echo "Please enter 1 or 2." ;;
-    esac
-  done
-  echo -e "Pruning mode: ${CYAN}$([ "$ENABLE_RETH_PRUNE" = "yes" ] && echo "Pruned (CL+EL)" || echo "Archive (no prune)")${RESET}"
-else
-  ENABLE_RETH_PRUNE="no"
-fi
-
-# Prompt for OG_MONIKER, OG_PORT, Indexer
-read -p "Enter your moniker: " OG_MONIKER
-read -p "Enter your preferred port prefix: (leave empty to use default: 8) " OG_PORT
-if [ -z "$OG_PORT" ]; then
-    OG_PORT=8
-fi
-read -p "Do you want to enable the indexer? (yes/no): " ENABLE_INDEXER
-read -p "Configure UFW firewall rules for 0G? (y/n): " SETUP_UFW
-
-# HTTP RPC can be useful for a public RPC node, but the Engine API and
-# monitoring endpoints must not be exposed accidentally. Keep all of these
-# local by default. Only a Reth deployment offers the explicit public opt-in.
-EXPOSE_PUBLIC_RPC=no
-RETH_HTTP_ADDR="127.0.0.1"
-MONITORING_ADDR="127.0.0.1"
-if [ "$EXEC_CLIENT" = "reth" ]; then
-  read -p "Expose Reth HTTP RPC, pprof and Prometheus publicly? (yes/no) [default: no]: " EXPOSE_PUBLIC_RPC
-  EXPOSE_PUBLIC_RPC=${EXPOSE_PUBLIC_RPC:-no}
-  case "${EXPOSE_PUBLIC_RPC,,}" in
-    yes|y) RETH_HTTP_ADDR="0.0.0.0" ; MONITORING_ADDR="0.0.0.0" ;;
-    no|n)  ;;
-    *) echo "Please answer yes or no."; exit 1 ;;
-  esac
-fi
-AUTHRPC_ADDR="127.0.0.1"
-echo "Reth HTTP RPC: ${RETH_HTTP_ADDR}; Engine API: ${AUTHRPC_ADDR}; monitoring: ${MONITORING_ADDR}"
-
-# Extra prompts for VALIDATOR
-if [ "$NODE_TYPE" = "validator" ]; then
-  read -p "Enter Mainnet ETH RPC endpoint (ETH_RPC_URL): " ETH_RPC_URL
-  while [ -z "$ETH_RPC_URL" ]; do
-    echo "ETH_RPC_URL cannot be empty for validator mode."
-    read -p "Enter Mainnet ETH RPC endpoint (ETH_RPC_URL): " ETH_RPC_URL
-  done
-  read -p "Enter block range to fetch logs (BLOCK_NUM), e.g. 2000: " BLOCK_NUM
-  while ! [[ "$BLOCK_NUM" =~ ^[0-9]+$ ]]; do
-    echo "BLOCK_NUM must be a positive integer."
-    read -p "Enter block range to fetch logs (BLOCK_NUM), e.g. 2000: " BLOCK_NUM
-  done
-fi
-
-# Service Name Configuration (for multi-instance support)
-if [ -z "$OG_SERVICE_NAME" ]; then
-    read -p "Enter Consensus Service Name (default '0gchaind'): " OG_SERVICE_NAME
-    OG_SERVICE_NAME=${OG_SERVICE_NAME:-0gchaind}
-fi
-
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    if [ -z "$OG_GETH_SERVICE_NAME" ]; then
-        read -p "Enter Geth Service Name (default '0g-geth'): " OG_GETH_SERVICE_NAME
-        OG_GETH_SERVICE_NAME=${OG_GETH_SERVICE_NAME:-0g-geth}
-    fi
-    echo "Using Service Names: ${OG_SERVICE_NAME} and ${OG_GETH_SERVICE_NAME}"
-else
-    read -p "Enter Reth Service Name (default '0g-reth'): " OG_RETH_SERVICE_NAME
-    OG_RETH_SERVICE_NAME=${OG_RETH_SERVICE_NAME:-0g-reth}
-
-    echo "Using Service Names: ${OG_SERVICE_NAME} and ${OG_RETH_SERVICE_NAME}"
-fi
-
-# Save env vars
-{
-  echo "export OG_MONIKER=\"$OG_MONIKER\""
-  echo "export OG_PORT=\"$OG_PORT\""
-  echo "export NODE_TYPE=\"$NODE_TYPE\""
-  echo "export EXEC_CLIENT=\"$EXEC_CLIENT\""
-  echo "export ENABLE_RETH_PRUNE=\"$ENABLE_RETH_PRUNE\""
-  echo "export EXPOSE_PUBLIC_RPC=\"$EXPOSE_PUBLIC_RPC\""
-  echo "export OG_SERVICE_NAME=\"$OG_SERVICE_NAME\""
-  if [ "$EXEC_CLIENT" = "geth" ]; then
-    echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\""
-  else
-    echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\""
-  fi
-  if [ "$NODE_TYPE" = "validator" ]; then
-    echo "export ETH_RPC_URL=\"$ETH_RPC_URL\""
-    echo "export BLOCK_NUM=\"$BLOCK_NUM\""
-  fi
-  echo 'export PATH=$PATH:$HOME/aristotle/bin'
-  } >> ~/.bash_profile
-  source ~/.bash_profile
-
-# ==== CLEANUP EXISTING INSTALLATION ====
-echo -e "\n?? Cleaning up any existing 0G node installation..."
-
-# Stop and disable services (uses both hardcoded and custom names for compatibility)
-sudo systemctl stop 0gchaind ${OG_SERVICE_NAME} 2>/dev/null || true
-sudo systemctl stop 0g-geth 0ggeth reth 0g-reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
-sudo systemctl disable 0gchaind ${OG_SERVICE_NAME} 2>/dev/null || true
-sudo systemctl disable 0g-geth 0ggeth reth 0g-reth ${OG_GETH_SERVICE_NAME:-_skip_} ${OG_RETH_SERVICE_NAME:-_skip_} 2>/dev/null || true
-sudo rm -f /etc/systemd/system/0gchaind.service /etc/systemd/system/0g-geth.service /etc/systemd/system/0ggeth.service /etc/systemd/system/reth.service /etc/systemd/system/0g-reth.service
-sudo rm -f /etc/systemd/system/${OG_SERVICE_NAME}.service /etc/systemd/system/${OG_GETH_SERVICE_NAME:-_skip_}.service /etc/systemd/system/${OG_RETH_SERVICE_NAME:-_skip_}.service 2>/dev/null || true
-sudo rm -f $HOME/go/bin/0gchaind $HOME/go/bin/0g-geth $HOME/go/bin/0ggeth $HOME/go/bin/reth $HOME/go/bin/0g-reth
-rm -rf $HOME/.0gchaind $HOME/aristotle $HOME/aristotle-v1.0.4 $HOME/aristotle-v1.0.4.tar.gz $HOME/aristotle-v1.0.6 $HOME/aristotle-v1.0.6.tar.gz
-
-echo "? Cleanup complete."
-
-# ==== DEPENDENCIES ====
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl git wget htop tmux build-essential jq make lz4 gcc unzip
-
-# ==== INSTALL GO ====
-cd $HOME && ver="1.22.5"
-wget -q "https://golang.org/dl/go$ver.linux-amd64.tar.gz"
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf "go$ver.linux-amd64.tar.gz"
-rm "go$ver.linux-amd64.tar.gz"
-echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> ~/.bash_profile
-source ~/.bash_profile
-[ ! -d ~/go/bin ] && mkdir -p ~/go/bin
-go version
-
-# Optional: Configure UFW based on chosen ports
-if [[ "$SETUP_UFW" =~ ^[Yy]$ ]]; then
-    sudo apt install -y ufw
-    sudo ufw allow 22/tcp comment "SSH Access"
-    sudo ufw allow ${OG_PORT}303/tcp comment "0g-geth Mainnet P2P"
-    sudo ufw allow ${OG_PORT}303/udp comment "0g-geth Mainnet discovery"
-    sudo ufw allow ${OG_PORT}656/tcp comment "0g Mainnet CometBFT P2P"
-    sudo ufw --force enable
-    sudo ufw status verbose
-fi
-
-# ==== DOWNLOAD REVIEWED ARISTOTLE BUNDLE ====
-cd "$HOME"
-sudo rm -rf aristotle
-curl -fL --retry 3 "$ARISTOTLE_URL" -o "$ARISTOTLE_ARTIFACT"
-printf '%s  %s\n' "$ARISTOTLE_SHA256" "$ARISTOTLE_ARTIFACT" | sha256sum --check
-tar -xzvf "$ARISTOTLE_ARTIFACT"
-[ -d "$ARISTOTLE_EXTRACT_DIR" ] || { echo "Verified Aristotle archive extracted an unexpected directory." >&2; exit 1; }
-mv "$ARISTOTLE_EXTRACT_DIR" aristotle
-rm -f "$ARISTOTLE_ARTIFACT"
-
-# ==== MAKE BINARIES EXECUTABLE ====
-sudo chmod +x $HOME/aristotle/bin/geth $HOME/aristotle/bin/reth $HOME/aristotle/bin/0gchaind 2>/dev/null || true
-
-# ==== MOVE BINARIES ====
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    cp $HOME/aristotle/bin/geth $HOME/go/bin/0g-geth
-else
-    cp $HOME/aristotle/bin/reth $HOME/go/bin/0g-reth
-fi
-cp $HOME/aristotle/bin/0gchaind $HOME/go/bin/0gchaind
-
-# ==== INIT CHAIN ====
-mkdir -p $HOME/.0gchaind/
-cp -r $HOME/aristotle/* $HOME/.0gchaind/
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    0g-geth init --datadir $HOME/.0gchaind/0g-home/geth-home $HOME/.0gchaind/geth-genesis.json
-else
-    0g-reth init --chain $HOME/.0gchaind/geth-genesis.json --datadir $HOME/.0gchaind/0g-home/reth-home
-
-    # Inject prune segments into existing reth.toml (generated by reth init)
-    if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        RETH_TOML="$HOME/.0gchaind/0g-home/reth-home/reth.toml"
-        echo -e "${CYAN}Configuring Reth pruning in reth.toml...${RESET}"
-        if [ -f "$RETH_TOML" ]; then
-            # Insert [prune.segments] before [prune.segments.receipts_log_filter]
-            sed -i '/^\[prune\.segments\.receipts_log_filter\]/i \
-[prune.segments]\n\
-sender_recovery = { distance = 10064 }\n\
-transaction_lookup = { distance = 10064 }\n\
-receipts = { distance = 10064 }\n\
-account_history = { distance = 10064 }\n\
-storage_history = { distance = 10064 }\n' "$RETH_TOML"
-        else
-            # Fallback: create minimal reth.toml if init didn't generate one
-            cat > "$RETH_TOML" << 'RETHEOF'
-[prune]
-block_interval = 5
-
-[prune.segments]
-sender_recovery = { distance = 10064 }
-transaction_lookup = { distance = 10064 }
-receipts = { distance = 10064 }
-account_history = { distance = 10064 }
-storage_history = { distance = 10064 }
-
-[prune.segments.receipts_log_filter]
-RETHEOF
-        fi
-        echo -e "${GREEN}Reth prune config applied (distance=10064 for all segments)${RESET}"
-    fi
-fi
-0gchaind init "$OG_MONIKER" --home $HOME/.0gchaind/tmp --chaincfg.chain-spec mainnet
-
-# ==== COPY KEYS ====
-cp $HOME/.0gchaind/tmp/data/priv_validator_state.json $HOME/.0gchaind/0g-home/0gchaind-home/data/
-cp $HOME/.0gchaind/tmp/config/node_key.json $HOME/.0gchaind/0g-home/0gchaind-home/config/
-cp $HOME/.0gchaind/tmp/config/priv_validator_key.json $HOME/.0gchaind/0g-home/0gchaind-home/config/
-
-# ==== Generate JWT Authentication Token ====
-0gchaind jwt generate --home $HOME/.0gchaind/0g-home/0gchaind-home --chaincfg.chain-spec mainnet
-cp -f $HOME/.0gchaind/0g-home/0gchaind-home/config/jwt.hex $HOME/.0gchaind/jwt.hex
-
-# ==== CONFIG PATCH ====
-CONFIG="$HOME/.0gchaind/0g-home/0gchaind-home/config"
-GCONFIG="$HOME/.0gchaind/geth-config.toml"
-EXTERNAL_IP=$(curl -4 -s ifconfig.me)
-
-# config.toml
-sed -i "s/^moniker *=.*/moniker = \"$OG_MONIKER\"/" $CONFIG/config.toml
-sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:${OG_PORT}656\"|" $CONFIG/config.toml
-sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:${OG_PORT}657\"|" $CONFIG/config.toml
-sed -i "s|^proxy_app = .*|proxy_app = \"tcp://127.0.0.1:${OG_PORT}658\"|" $CONFIG/config.toml
-sed -i "s|^pprof_laddr = .*|pprof_laddr = \"${MONITORING_ADDR}:${OG_PORT}060\"|" $CONFIG/config.toml
-sed -i "s|prometheus_listen_addr = \".*\"|prometheus_listen_addr = \"${MONITORING_ADDR}:${OG_PORT}660\"|" $CONFIG/config.toml
-sed -i "s/^timeout_commit *=.*/timeout_commit = \"200ms\"/" $CONFIG/config.toml
-
-# indexer toggle
-if [ "$ENABLE_INDEXER" = "yes" ]; then
-  sed -i -e 's/^indexer = "null"/indexer = "kv"/' $CONFIG/config.toml
-  echo "Indexer enabled."
-else
-  sed -i -e 's/^indexer = "kv"/indexer = "null"/' $CONFIG/config.toml
-  echo "Indexer disabled."
-fi
-
-# app.toml
-sed -i "s|address = \".*:3500\"|address = \"127.0.0.1:${OG_PORT}500\"|" $CONFIG/app.toml
-sed -i "s|^rpc-dial-url *=.*|rpc-dial-url = \"http://localhost:${OG_PORT}551\"|" $CONFIG/app.toml
-sed -i "s/^pruning *=.*/pruning = \"custom\"/" $CONFIG/app.toml
-sed -i "s/^pruning-keep-recent *=.*/pruning-keep-recent = \"100\"/" $CONFIG/app.toml
-sed -i "s/^pruning-interval *=.*/pruning-interval = \"19\"/" $CONFIG/app.toml
-sed -i "s/^payload-timeout *=.*/payload-timeout = \"200ms\"/" $CONFIG/app.toml
-
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    # geth-config.toml
-    sed -i "s/HTTPPort = .*/HTTPPort = ${OG_PORT}545/" $GCONFIG
-    sed -i "s/WSPort = .*/WSPort = ${OG_PORT}546/" $GCONFIG
-    sed -i "s/AuthPort = .*/AuthPort = ${OG_PORT}551/" $GCONFIG
-    sed -i "s/ListenAddr = .*/ListenAddr = \":${OG_PORT}303\"/" $GCONFIG
-    sed -i "s/DiscAddr = .*/DiscAddr = \":${OG_PORT}303\"/" $GCONFIG
-    sed -i "s/^# *Port = .*/# Port = ${OG_PORT}901/" $GCONFIG
-    sed -i "s/^# *InfluxDBEndpoint = .*/# InfluxDBEndpoint = \"http:\/\/localhost:${OG_PORT}086\"/" $GCONFIG
-else
-    # Reth client.toml symlink for 0gchaind
-    mkdir -p $HOME/.0gchaind/config
-    ln -sf $HOME/.0gchaind/0g-home/0gchaind-home/config/client.toml $HOME/.0gchaind/config/client.toml
-fi
-
-# ==== SYSTEMD SERVICES ====
-if [ "$EXEC_CLIENT" = "reth" ]; then
-    if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        # Pruned mode: CL uses custom pruning (from app.toml settings)
-        EXTRA_CL_FLAGS="--chaincfg.block-store-service.enabled \\
-  --chaincfg.node-api.enabled \\
-  --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500"
-    else
-        # Archive mode: CL keeps everything
-        EXTRA_CL_FLAGS="--chaincfg.block-store-service.enabled \\
-  --chaincfg.node-api.enabled \\
-  --chaincfg.node-api.address 0.0.0.0:${OG_PORT}500 \\
-  --pruning=nothing"
-    fi
-else
-    EXTRA_CL_FLAGS=""
-fi
-
-# Consensus service file (branch on NODE_TYPE)
-if [ "$NODE_TYPE" = "validator" ]; then
-sudo tee /etc/systemd/system/${OG_SERVICE_NAME}.service > /dev/null <<EOF
-[Unit]
-Description=0gchaind Node Service - ${OG_SERVICE_NAME} (Validator + ${EXEC_CLIENT})
-After=network-online.target
-
-[Service]
-User=$USER
-Environment=CHAIN_SPEC=mainnet
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0gchaind start \\
-  --chaincfg.chain-spec mainnet \\
-  --chaincfg.restaking.enabled \\
-  --chaincfg.restaking.symbiotic-rpc-dial-url ${ETH_RPC_URL} \\
-  --chaincfg.restaking.symbiotic-get-logs-block-range ${BLOCK_NUM} \\
-  --home $HOME/.0gchaind/0g-home/0gchaind-home \\
-  --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/kzg-trusted-setup.json \\
-  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/jwt.hex \\
-  --chaincfg.kzg.implementation=crate-crypto/go-kzg-4844 \\
-  --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551 \\
-  ${EXTRA_CL_FLAGS:-} \\
-  --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656
-Restart=on-failure
-RestartSec=3
-LimitNOFILE=65535
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
+Deploy Validator Node is a fresh-install flow and will not delete or replace an
+existing managed validator/RPC data root. Use the appropriate update, migration,
+snapshot, or recovery workflow instead. If the old node is intentionally being
+decommissioned for a brand-new identity, back it up and remove it explicitly as
+a separate operator action before using this installer.
 EOF
-else
-sudo tee /etc/systemd/system/${OG_SERVICE_NAME}.service > /dev/null <<EOF
-[Unit]
-Description=0gchaind Node Service - ${OG_SERVICE_NAME} (RPC + ${EXEC_CLIENT})
-After=network-online.target
-
-[Service]
-User=$USER
-Environment=CHAIN_SPEC=mainnet
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0gchaind start \\
-  --chaincfg.chain-spec mainnet \\
-  --home $HOME/.0gchaind/0g-home/0gchaind-home \\
-  --chaincfg.kzg.trusted-setup-path=$HOME/.0gchaind/kzg-trusted-setup.json \\
-  --chaincfg.engine.jwt-secret-path=$HOME/.0gchaind/jwt.hex \\
-  --chaincfg.kzg.implementation=crate-crypto/go-kzg-4844 \\
-  --chaincfg.engine.rpc-dial-url=http://localhost:${OG_PORT}551 \\
-  ${EXTRA_CL_FLAGS:-} \\
-  --p2p.external_address=${EXTERNAL_IP}:${OG_PORT}656
-Restart=on-failure
-RestartSec=3
-LimitNOFILE=65535
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    exit 1
 fi
 
-# ---- Execution Layer Service ----
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    # Geth service file
-    sudo tee /etc/systemd/system/${OG_GETH_SERVICE_NAME}.service > /dev/null <<EOF
-[Unit]
-Description=0g Geth Node Service - ${OG_GETH_SERVICE_NAME}
-After=network-online.target
-
-[Service]
-User=$USER
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0g-geth \\
-  --config $HOME/.0gchaind/geth-config.toml \\
-  --datadir $HOME/.0gchaind/0g-home/geth-home \\
-  --http \\
-  --http.api eth,net,web3,txpool,trace \\
-  --http.addr 127.0.0.1 \\
-  --http.port ${OG_PORT}545 \\
-  --ws \\
-  --ws.api eth,web3,net,txpool \\
-  --ws.addr 127.0.0.1 \\
-  --ws.port ${OG_PORT}546 \\
-  --authrpc.port ${OG_PORT}551 \\
-  --discovery.port ${OG_PORT}303 \\
-  --port ${OG_PORT}303 \\
-  --networkid 16661
-Restart=on-failure
-RestartSec=3
-LimitNOFILE=65535
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    EL_SERVICE_NAME="$OG_GETH_SERVICE_NAME"
-else
-    # Build Reth pruning flags
-    if [ "$ENABLE_RETH_PRUNE" = "yes" ]; then
-        RETH_PRUNE_FLAGS="--config $HOME/.0gchaind/0g-home/reth-home/reth.toml \\
-  --full \\"
-    else
-        RETH_PRUNE_FLAGS=""
-    fi
-
-    # Reth service file
-    sudo tee /etc/systemd/system/${OG_RETH_SERVICE_NAME}.service > /dev/null <<EOF
-[Unit]
-Description=0G Reth Execution Client - ${OG_RETH_SERVICE_NAME}
-After=network-online.target
-
-[Service]
-User=$USER
-Type=simple
-WorkingDirectory=$HOME/.0gchaind
-ExecStart=$HOME/go/bin/0g-reth node \\
-  --chain $HOME/.0gchaind/geth-genesis.json \\
-  ${RETH_PRUNE_FLAGS}
-  --http \\
-  --http.addr ${RETH_HTTP_ADDR} \\
-  --http.port ${OG_PORT}545 \\
-  --http.api eth,net,web3,txpool \\
-  --authrpc.addr ${AUTHRPC_ADDR} \\
-  --authrpc.port ${OG_PORT}551 \\
-  --authrpc.jwtsecret $HOME/.0gchaind/jwt.hex \\
-  --datadir $HOME/.0gchaind/0g-home/reth-home \\
-  --ipcpath $HOME/.0gchaind/0g-home/reth-home/eth-engine.ipc \\
-  --engine.persistence-threshold 0 \\
-  --engine.memory-block-buffer-target 0 \\
-  --bootnodes="enode://2bf74c837a98c94ad0fa8f5c58a428237d2040f9269fe622c3dbe4fef68141c28e2097d7af6ebaa041194257543dc112514238361a6498f9a38f70fd56493f96@8.221.140.134:30303" \\
-  --port ${OG_PORT}303 \\
-  --nat extip:${EXTERNAL_IP}
-Restart=on-failure
-RestartSec=3
-LimitNOFILE=65535
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    EL_SERVICE_NAME="$OG_RETH_SERVICE_NAME"
+# Repository tests exercise only this non-mutating preflight path.
+if [[ "${VALLEY_TEST_ONLY_PREFLIGHT:-0}" == "1" ]]; then
+    echo "Validator deploy preflight passed: managed data root is absent."
+    exit 0
 fi
 
-# ==== START SERVICES ====
-sudo systemctl daemon-reload
-sudo systemctl enable ${OG_SERVICE_NAME}
-sudo systemctl enable ${EL_SERVICE_NAME}
-
-# Start EL first, then CL
-echo -e "${CYAN}Starting ${EXEC_CLIENT} execution client...${RESET}"
-sudo systemctl start ${EL_SERVICE_NAME}
-
-# For Reth: wait for Engine API port
-if [ "$EXEC_CLIENT" = "reth" ]; then
-    echo -e "${YELLOW}Waiting for Reth Engine API port (${OG_PORT}551) to be ready...${RESET}"
-    for i in $(seq 1 30); do
-      if ss -tlnp | grep -q "${OG_PORT}551"; then
-        echo -e "${GREEN}Reth Engine API is ready.${RESET}"
-        break
-      fi
-      if [ "$i" -eq 30 ]; then
-        echo -e "${YELLOW}Warning: Engine API port not detected after 30s. Starting consensus anyway...${RESET}"
-      fi
-      sleep 1
-    done
+# Local clones execute the sibling implementation directly. The remote menu
+# transport downloads only the requested helper, so fetch the implementation
+# from the same repository/source ref in that mode.
+if [[ -r "$LOCAL_IMPL" ]]; then
+    exec bash "$LOCAL_IMPL" "$@"
 fi
 
-echo -e "${CYAN}Starting consensus client...${RESET}"
-sudo systemctl start ${OG_SERVICE_NAME}
+command -v curl >/dev/null 2>&1 || {
+    echo "Validator installer implementation unavailable: curl is required for remote mode." >&2
+    exit 2
+}
 
-# Also restart EL after CL for Geth
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    sudo systemctl restart ${EL_SERVICE_NAME}
+VALLEY_REPOSITORY="${VALLEY_REPOSITORY:-hubofvalley/Valley-of-0G-Mainnet}"
+VALLEY_SOURCE_REF="${VALLEY_SOURCE_REF:-main}"
+REMOTE_IMPL="https://raw.githubusercontent.com/${VALLEY_REPOSITORY}/${VALLEY_SOURCE_REF}/resources/${IMPL_NAME}"
+TMP_IMPL=$(mktemp)
+cleanup() { rm -f "$TMP_IMPL"; }
+trap cleanup EXIT
+
+if ! curl -fsSL "$REMOTE_IMPL" -o "$TMP_IMPL"; then
+    echo "Validator installer implementation download failed; nothing was executed." >&2
+    exit 2
 fi
 
-# ==== DONE ====
-echo -e "\n${GREEN}0G Node Installation Completed Successfully!${RESET}"
-echo -e "\n${YELLOW}Node Configuration Summary:${RESET}"
-echo -e "Type: ${CYAN}$NODE_TYPE${RESET}"
-echo -e "Execution Client: ${CYAN}$EXEC_CLIENT${RESET}"
-echo -e "Moniker: ${CYAN}$OG_MONIKER${RESET}"
-echo -e "Port Prefix: ${CYAN}$OG_PORT${RESET}"
-echo -e "Consensus Service: ${CYAN}${OG_SERVICE_NAME}.service${RESET}"
-echo -e "EL Service: ${CYAN}${EL_SERVICE_NAME}.service${RESET}"
-echo -e "Indexer: ${CYAN}$([ "$ENABLE_INDEXER" = "yes" ] && echo "Enabled" || echo "Disabled")${RESET}"
-if [ "$EXEC_CLIENT" = "reth" ]; then
-  echo -e "Pruning: ${CYAN}$([ "$ENABLE_RETH_PRUNE" = "yes" ] && echo "Pruned (CL+EL, distance=10064)" || echo "Archive (no prune)")${RESET}"
-fi
-[ "$NODE_TYPE" = "validator" ] && echo -e "ETH_RPC_URL: ${CYAN}$ETH_RPC_URL${RESET}\nBLOCK_NUM: ${CYAN}$BLOCK_NUM${RESET}"
-echo -e "Node ID: ${CYAN}$(0gchaind comet show-node-id --home $HOME/.0gchaind/0g-home/0gchaind-home/)${RESET}"
-echo -e "\nTo view logs: sudo journalctl -u ${OG_SERVICE_NAME} -u ${EL_SERVICE_NAME} -fn 100"
-echo -e "\n${YELLOW}Press Enter to continue to main menu...${RESET}"
-read -r
+bash "$TMP_IMPL" "$@"

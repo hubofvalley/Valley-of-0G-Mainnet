@@ -88,9 +88,11 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | Validator bundle (Aristotle) | v1.0.6 |
 | 0gchaind | e8e1071 |
 | Geth / Reth | 1.15.11 / 1.8.1 |
-| Storage Node | v1.1.0 |
+| Storage Node | v1.2.0 |
 | Storage KV | v1.4.0 |
 | Chain | 0gchain-16661 (Aristotle) |
+
+Storage Node `v1.2.0` is pinned to the current upstream release and its exact mainnet config blob, but live runtime validation on a Grand Valley Storage node is still pending and is tracked in `VERSIONS.json`.
 
 ## Grand Valley Public Endpoints
 
@@ -107,7 +109,8 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 - Scripts execute locally and may install packages, create services, or modify node data.
 - Treat private keys, validator keys, and JWT files as secrets. Never paste them into issues or logs.
 - Validator/staking transactions use Foundry's native interactive signer prompt; Valley does not read or persist the EVM wallet private key.
-- Storage v1.1.0 and Alignment v1.0.0 still expose raw-key requirements upstream. Valley does not automate those raw-key paths: fresh Storage/Alignment flows stage reviewed software and stop before secret-dependent startup or signing.
+- Storage v1.2.0 and Alignment v1.0.0 still expose raw-key requirements upstream. Valley does not automate those raw-key paths: fresh Storage/Alignment flows stage reviewed software and stop before secret-dependent startup or signing.
+- Fresh Storage installs bind admin RPC and gRPC to loopback by default; public gRPC exposure must be an explicit operator decision.
 - Review script changes before running updates, especially snapshot, migration, rollback, and deletion operations.
 - Back up validator keys and configuration before destructive maintenance.
 - [`VERSIONS.json`](VERSIONS.json) is authoritative for managed upstream tags/commits and release SHA-256 digests; installers/updaters/migrations fail closed when required integrity fields are missing.

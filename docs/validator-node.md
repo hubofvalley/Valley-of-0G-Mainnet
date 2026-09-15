@@ -24,14 +24,20 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 
 Select **Validator Node** → **Deploy Validator Node**, choose Geth or Reth, and follow the prompts.
 
-The deploy flow is intentionally **not** a re-deploy path for an existing
-validator. If the managed consensus key or `priv_validator_state.json` already
-exists, Baconvalley refuses before destructive cleanup. Use **Manage Validator
-Node** for normal bundle updates and the documented migration flow for
-execution-client changes. For an intentional rebuild, stop the old signer and
-make a verified offline backup of both the consensus key and signing-state file
-before moving the existing data root out of the installer path. Never run two
-active nodes with the same consensus key.
+The deploy flow is intentionally **fresh-install only**. Its public entrypoint
+fails closed before validator/RPC selection whenever the managed
+`$HOME/.0gchaind` data root already exists (including a symlink). If the managed
+consensus key or `priv_validator_state.json` is present, Baconvalley reports the
+more specific signing-material guard. Choosing RPC mode therefore cannot bypass
+the validator-safety boundary.
+
+Use **Manage Validator Node** for normal bundle updates, the documented
+execution-client migration flow for EL changes, and the snapshot/recovery flows
+for data maintenance. Recovery or rebuild of an existing validator identity is
+not automated by the fresh installer: preserve **both** the consensus key and
+last-sign state, make sure only one signer can be active, and follow an audited
+recovery runbook. Do not move or rename the managed data root merely to bypass
+the fresh-install guard.
 
 The current bundle and shipped component versions are recorded in [`../VERSIONS.json`](../VERSIONS.json). The bundle installs:
 

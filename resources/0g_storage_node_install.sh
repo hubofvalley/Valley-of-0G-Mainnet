@@ -11,10 +11,21 @@ valley_manifest_init
 
 TARGET_VERSION=$(valley_manifest_get '.components.storage_node.version_current')
 TARGET_TAG=$(valley_manifest_get '.components.storage_node.source_tag')
+TARGET_TAG_OBJECT=$(valley_manifest_get '.components.storage_node.source_tag_object')
 TARGET_COMMIT=$(valley_manifest_get '.components.storage_node.pinned_commit')
+CONFIG_SOURCE_PATH=$(valley_manifest_get '.components.storage_node.config_source.path')
+CONFIG_SOURCE_COMMIT=$(valley_manifest_get '.components.storage_node.config_source.commit')
+CONFIG_SOURCE_BLOB=$(valley_manifest_get '.components.storage_node.config_source.blob_sha')
 STORAGE_REPO=$(valley_manifest_get '.components.storage_node.release_repo')
 EXPECTED_CHAIN_ID=$(valley_manifest_get '.chain.evm_chain_id')
 valley_require_git_commit "$TARGET_COMMIT" || { echo "Invalid Storage commit in VERSIONS.json." >&2; exit 2; }
+valley_require_git_commit "$TARGET_TAG_OBJECT" || { echo "Invalid Storage tag object in VERSIONS.json." >&2; exit 2; }
+valley_require_git_commit "$CONFIG_SOURCE_COMMIT" || { echo "Invalid Storage config commit in VERSIONS.json." >&2; exit 2; }
+[[ "$CONFIG_SOURCE_BLOB" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid Storage config blob in VERSIONS.json." >&2; exit 2; }
+[[ "$CONFIG_SOURCE_PATH" =~ ^run/[A-Za-z0-9._/-]+$ && "$CONFIG_SOURCE_PATH" != *".."* ]] || {
+    echo "Invalid Storage config path in VERSIONS.json." >&2
+    exit 2
+}
 
 NODE_DIR="${ZGS_HOME:-$HOME/0g-storage-node}"
 CONFIG_FILE="$NODE_DIR/run/config-mainnet.toml"
@@ -96,35 +107,81 @@ echo "This installer will stage the reviewed binary, non-secret config, and serv
 read -r -p "Type STAGE-STORAGE to continue: " confirm
 [ "$confirm" = "STAGE-STORAGE" ] || { echo "Storage staging cancelled."; exit 0; }
 
+STAGE_ROOT=$(mktemp -d "$HOME/.valley-zgs-stage.XXXXXX")
+STAGE_SRC="$STAGE_ROOT/source"
+trap 'rm -rf "$STAGE_ROOT"' EXIT
+
+echo "Staging and verifying Storage Node $TARGET_VERSION before installing build dependencies..."
+git clone --filter=blob:none --no-checkout "$STORAGE_REPO.git" "$STAGE_SRC"
+git -C "$STAGE_SRC" fetch --force origin "refs/tags/${TARGET_TAG}:refs/tags/${TARGET_TAG}"
+[ "$(git -C "$STAGE_SRC" rev-parse "refs/tags/${TARGET_TAG}")" = "$TARGET_TAG_OBJECT" ] || {
+    echo "Storage tag object verification failed." >&2
+    exit 1
+}
+[ "$(git -C "$STAGE_SRC" rev-parse "refs/tags/${TARGET_TAG}^{commit}")" = "$TARGET_COMMIT" ] || {
+    echo "Storage tag-to-commit verification failed." >&2
+    exit 1
+}
+
+# Verify the exact mainnet config blob from the reviewed release commit before
+# using it. This prevents mutable upstream config drift while keeping the binary
+# and network configuration on the same v1.2.0 source revision.
+git -C "$STAGE_SRC" fetch origin "$CONFIG_SOURCE_COMMIT"
+ACTUAL_CONFIG_BLOB=$(git -C "$STAGE_SRC" rev-parse "${CONFIG_SOURCE_COMMIT}:${CONFIG_SOURCE_PATH}" 2>/dev/null || true)
+[ "$ACTUAL_CONFIG_BLOB" = "$CONFIG_SOURCE_BLOB" ] || {
+    echo "Storage mainnet config artifact verification failed." >&2
+    exit 1
+}
+
+git -C "$STAGE_SRC" checkout --detach "$TARGET_COMMIT"
+[ "$(git -C "$STAGE_SRC" rev-parse HEAD)" = "$TARGET_COMMIT" ] || {
+    echo "Storage source pin verification failed." >&2
+    exit 1
+}
+git -C "$STAGE_SRC" submodule update --init --recursive
+
 sudo apt-get update -y
 sudo apt-get install -y clang cmake build-essential git libssl-dev pkg-config protobuf-compiler llvm llvm-dev cargo
 
-cd "$HOME"
-git clone "$STORAGE_REPO.git" "$NODE_DIR"
-cd "$NODE_DIR"
-git fetch --tags --force
-git checkout --detach "$TARGET_COMMIT"
-[ "$(git rev-parse HEAD)" = "$TARGET_COMMIT" ] || { echo "Storage source pin verification failed." >&2; exit 1; }
-git submodule update --init --recursive
-cargo build --release
+(cd "$STAGE_SRC" && cargo build --release --locked)
+STAGED_BINARY="$STAGE_SRC/target/release/zgs_node"
+[ -x "$STAGED_BINARY" ] || { echo "Storage build did not produce zgs_node." >&2; exit 1; }
+"$STAGED_BINARY" --help >/dev/null
 
-cp "$NODE_DIR/run/config-mainnet-turbo.toml" "$CONFIG_FILE"
+STAGED_CONFIG="$STAGE_SRC/run/config-mainnet.toml"
+git -C "$STAGE_SRC" show "${CONFIG_SOURCE_COMMIT}:${CONFIG_SOURCE_PATH}" > "$STAGED_CONFIG"
 sed -i -E \
     -e 's|^[[:space:]]*#?[[:space:]]*listen_address[[:space:]]*=.*|listen_address = "0.0.0.0:5678"|' \
     -e 's|^[[:space:]]*#?[[:space:]]*listen_address_admin[[:space:]]*=.*|listen_address_admin = "127.0.0.1:5679"|' \
-    -e 's|^[[:space:]]*#?[[:space:]]*rpc_enabled[[:space:]]*=.*|rpc_enabled = true|' \
+    -e 's|^[[:space:]]*#?[[:space:]]*listen_address_grpc[[:space:]]*=.*|listen_address_grpc = "127.0.0.1:50051"|' \
     -e 's|^[[:space:]]*#?[[:space:]]*log_sync_start_block_number[[:space:]]*=.*|log_sync_start_block_number = 2387557|' \
     -e "s|^[[:space:]]*#?[[:space:]]*blockchain_rpc_endpoint[[:space:]]*=.*|blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"|" \
     -e 's|^[[:space:]]*#?[[:space:]]*log_contract_address[[:space:]]*=.*|log_contract_address = "0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526"|' \
     -e 's|^[[:space:]]*#?[[:space:]]*mine_contract_address[[:space:]]*=.*|mine_contract_address = "0xCd01c5Cd953971CE4C2c9bFb95610236a7F414fe"|' \
     -e 's|^[[:space:]]*#?[[:space:]]*reward_contract_address[[:space:]]*=.*|reward_contract_address = "0x457aC76B58ffcDc118AABD6DbC63ff9072880870"|' \
-    "$CONFIG_FILE"
-chmod 600 "$CONFIG_FILE"
+    "$STAGED_CONFIG"
+chmod 600 "$STAGED_CONFIG"
 
-if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$CONFIG_FILE"; then
+grep -Eq '^network_boot_nodes[[:space:]]*=[[:space:]]*\[[^]]+/ip4/' "$STAGED_CONFIG" || {
+    echo "Config validation failed: verified mainnet bootstrap nodes are missing." >&2
+    exit 1
+}
+grep -Fqx '[rpc]' "$STAGED_CONFIG" || { echo "Config validation failed: [rpc] section missing." >&2; exit 1; }
+grep -Fqx '[sync]' "$STAGED_CONFIG" || { echo "Config validation failed: [sync] section missing." >&2; exit 1; }
+grep -Fqx 'auto_sync_enabled = true' "$STAGED_CONFIG" || { echo "Config validation failed: auto sync is not enabled." >&2; exit 1; }
+grep -Fqx 'listen_address = "0.0.0.0:5678"' "$STAGED_CONFIG" || { echo "Config validation failed: public RPC listener." >&2; exit 1; }
+grep -Fqx 'listen_address_admin = "127.0.0.1:5679"' "$STAGED_CONFIG" || { echo "Config validation failed: admin RPC listener." >&2; exit 1; }
+grep -Fqx 'listen_address_grpc = "127.0.0.1:50051"' "$STAGED_CONFIG" || { echo "Config validation failed: gRPC listener must default to loopback." >&2; exit 1; }
+grep -Fqx "blockchain_rpc_endpoint = \"$BLOCKCHAIN_RPC_ENDPOINT\"" "$STAGED_CONFIG" || { echo "Config validation failed: blockchain RPC." >&2; exit 1; }
+
+if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$STAGED_CONFIG"; then
     echo "Refusing to stage: source template unexpectedly contains populated miner_key." >&2
     exit 1
 fi
+
+mkdir -p "$(dirname "$NODE_DIR")"
+mv "$STAGE_SRC" "$NODE_DIR"
+CONFIG_FILE="$NODE_DIR/run/config-mainnet.toml"
 
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service >/dev/null <<EOF_UNIT
 [Unit]
@@ -144,6 +201,11 @@ WantedBy=multi-user.target
 EOF_UNIT
 sudo systemctl daemon-reload
 
+trap - EXIT
+rm -rf "$STAGE_ROOT"
+
 echo -e "${GREEN}Storage Node ${TARGET_VERSION} staged from immutable commit ${TARGET_COMMIT}.${RESET}"
+echo "Mainnet config verified from pinned upstream blob ${CONFIG_SOURCE_BLOB}."
+echo "Public Storage RPC remains on 0.0.0.0:5678; admin RPC and gRPC default to loopback only."
 echo "Service was NOT enabled or started because Valley does not handle the required raw miner key."
 echo "Review the official upstream secret requirement and configure/start the service manually only if you accept that residual upstream limitation."
