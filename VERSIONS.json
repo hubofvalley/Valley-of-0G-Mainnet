@@ -87,6 +87,7 @@
       "update_script": "resources/0g_storage_node_update.sh",
       "source_tag": "v1.2.0",
       "source_tag_object": "0445ef6a3a403468f14a4ce654bc2ecb0cfe9acc",
+      "source_tag_note": "v1.2.0 is a lightweight tag, so source_tag_object records the immutable tag ref target commit rather than an annotated tag object.",
       "pinned_commit": "0445ef6a3a403468f14a4ce654bc2ecb0cfe9acc",
       "config_source": {
         "path": "run/config-mainnet-turbo.toml",
