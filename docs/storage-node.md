@@ -25,12 +25,15 @@ Select **Storage Node** → **Deploy Storage Node** and review every prompt. The
 - repository: `$HOME/0g-storage-node`
 - config: `$HOME/0g-storage-node/run/config-mainnet.toml`
 - binary: `$HOME/0g-storage-node/target/release/zgs_node`
-- RPC listener: port `5678`
-- admin listener: port `5679`, which should remain private
+- public Storage RPC listener: `0.0.0.0:5678`
+- admin listener: `127.0.0.1:5679`
+- gRPC listener: `127.0.0.1:50051` by default
 
 The managed installer needs an EVM RPC endpoint but does not collect a storage miner key. It stages the reviewed source, non-secret configuration, and a disabled/stopped service unit, then stops before the upstream secret-dependent mining step.
 
-The managed `v1.1.0` source commit predates upstream's `run/config-mainnet-turbo.toml`. To avoid silently mixing the pinned binary with a mutable config from upstream `main`, Baconvalley pins the official mainnet config separately by upstream commit and Git blob in [`../VERSIONS.json`](../VERSIONS.json). The installer verifies both the `v1.1.0` tag-to-commit mapping and the exact config blob before installing build dependencies, building, or writing the service unit.
+The managed target is upstream `v1.2.0`. Baconvalley pins the release tag/commit and the exact `run/config-mainnet-turbo.toml` Git blob in [`../VERSIONS.json`](../VERSIONS.json). Binary and mainnet config therefore come from the same immutable upstream release revision. The installer verifies those pins before installing build dependencies, builds with `cargo --locked`, and only moves the staged checkout into place after the build/config checks pass.
+
+Upstream defaults Storage gRPC to `0.0.0.0:50051` when the setting is omitted. Baconvalley overrides fresh installs to `127.0.0.1:50051` so gRPC is not exposed unintentionally. If an operator deliberately needs public gRPC, make that an explicit config/firewall/proxy decision and review the resulting attack surface before startup.
 
 ## Miner-key boundary
 
@@ -57,12 +60,15 @@ Use **Storage Node** → **Update Storage Node**. Before updating:
 
 1. Record the current binary version and Git commit.
 2. Back up `run/config-mainnet.toml`.
-3. Confirm enough disk space for a rebuild.
-4. After restart, verify service status, logs, RPC response, and sync progress.
+3. Confirm `listen_address_grpc` is explicitly configured under `[rpc]`; loopback (`127.0.0.1:50051`) is the recommended default.
+4. Confirm enough disk space for a locked rebuild.
+5. After restart, verify service status, logs, RPC response, gRPC bind, and sync progress.
+
+The updater fails closed if `listen_address_grpc` is omitted, because upstream would otherwise fall back to a wildcard/public gRPC listener. An explicitly configured public/wildcard gRPC listener is treated as an operator-owned choice and produces a warning rather than being silently changed.
 
 ## Configuration Changes
 
-Use **Storage Node** → **Change Storage Node Config**. Keep a copy of the previous config and change one setting at a time. Do not publish the admin port or private key.
+Use **Storage Node** → **Change Storage Node Config**. Keep a copy of the previous config and change one setting at a time. Do not publish the admin port or private key. Treat public gRPC exposure as an explicit ingress decision, not a default.
 
 ## Snapshots
 
