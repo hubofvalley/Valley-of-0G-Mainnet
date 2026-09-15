@@ -92,6 +92,8 @@ bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main
 | Storage KV | v1.4.0 |
 | Chain | 0gchain-16661 (Aristotle) |
 
+Storage Node `v1.2.0` is pinned to the current upstream release and its exact mainnet config blob, but live runtime validation on a Grand Valley Storage node is still pending and is tracked in `VERSIONS.json`.
+
 ## Grand Valley Public Endpoints
 
 | Type | URL |
