@@ -77,13 +77,30 @@ run_case() {
 }
 
 common='listen_address_grpc = "127.0.0.1:50051"'
-miner='miner_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"'
+miner_value='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+miner="miner_key = \"${miner_value}\""
 
 run_case zero_with_key "${common}"$'\n'"${miner}"$'\n''miner_cpu_percentage = 0' 1 'silently disables PoRA mining'
 [[ ! -s "$TMP/zero_with_key.log" ]] || fail "zero-CPU refusal must happen before git/build/service mutation"
+if grep -Fq "$miner_value" "$TMP/zero_with_key.out"; then
+    fail "zero-CPU refusal exposed miner_key material"
+fi
+
+run_case plus_zero_with_key "${common}"$'\n'"${miner}"$'\n''miner_cpu_percentage = +0' 1 'silently disables PoRA mining'
+[[ ! -s "$TMP/plus_zero_with_key.log" ]] || fail "+0 refusal must happen before git/build/service mutation"
+
+run_case hex_zero_with_key "${common}"$'\n'"${miner}"$'\n''miner_cpu_percentage = 0x0' 1 'silently disables PoRA mining'
+[[ ! -s "$TMP/hex_zero_with_key.log" ]] || fail "0x0 refusal must happen before git/build/service mutation"
+
+single_quoted_miner="miner_key = '${miner_value}'"
+run_case single_quote_key_zero "${common}"$'\n'"${single_quoted_miner}"$'\n''miner_cpu_percentage = 0' 1 'silently disables PoRA mining'
+[[ ! -s "$TMP/single_quote_key_zero.log" ]] || fail "single-quoted miner_key must not bypass zero-CPU refusal"
 
 run_case zero_without_key "${common}"$'\n''miner_cpu_percentage = 0' 0
 [[ -s "$TMP/zero_without_key.log" ]] || fail "non-mining config without miner_key should retain update compatibility"
+
+run_case zero_with_empty_key "${common}"$'\n''miner_key = ""'$'\n''miner_cpu_percentage = 0' 0
+[[ -s "$TMP/zero_with_empty_key.log" ]] || fail "empty miner_key should retain non-mining update compatibility"
 
 run_case normal_miner "${common}"$'\n'"${miner}"$'\n''miner_cpu_percentage = 100' 0
 [[ -s "$TMP/normal_miner.log" ]] || fail "valid mining config should retain update compatibility"
