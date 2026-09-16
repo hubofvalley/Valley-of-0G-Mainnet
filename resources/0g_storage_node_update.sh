@@ -16,10 +16,24 @@ CONFIG_FILE="${ZGS_CONFIG_FILE:-$NODE_DIR/run/config-mainnet.toml}"
 SERVICE_NAME="zgs"
 [ -d "$NODE_DIR/.git" ] && [ -f "$CONFIG_FILE" ] || { echo "Existing Storage checkout/config not found." >&2; exit 1; }
 
+MINER_KEY_CONFIGURED=false
 if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$CONFIG_FILE"; then
+    MINER_KEY_CONFIGURED=true
     echo "Legacy populated miner_key detected in the existing Storage config."
     echo "Valley will not read, print, rewrite, copy, or move its value; the existing config is preserved unchanged."
     echo "Upstream Storage currently requires raw key material for mining, so this residual persistent-secret limitation remains operator-owned."
+fi
+
+# The managed v1.2.0 release accepts miner_cpu_percentage=0, but its mining
+# loop gates work on cpu_percent > 0. With a miner key configured that becomes a
+# silent non-mining state: the process stays up without mining. Upstream main
+# now rejects this value, but no newer Storage release contains that guard yet.
+# Keep this rule release-bounded so future upstream semantics are not guessed.
+if [[ "$TARGET_VERSION" == "v1.2.0" && "$MINER_KEY_CONFIGURED" == true ]] &&
+   grep -Eq '^[[:space:]]*miner_cpu_percentage[[:space:]]*=[[:space:]]*0([[:space:]]*(#.*)?)?$' "$CONFIG_FILE"; then
+    echo "Storage update refused: v1.2.0 silently disables PoRA mining when miner_key is configured and miner_cpu_percentage = 0." >&2
+    echo "Set miner_cpu_percentage to 1..100, or remove miner_key if mining is intentionally disabled, then retry." >&2
+    exit 1
 fi
 
 # Upstream defaults gRPC to 0.0.0.0:50051 when the setting is omitted. Require
