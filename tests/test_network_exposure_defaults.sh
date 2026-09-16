@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-installer="$repo_root/resources/0g_validator_node_aristotle_install.sh"
+installer_wrapper="$repo_root/resources/0g_validator_node_aristotle_install.sh"
+installer="$repo_root/resources/0g_validator_node_aristotle_install_impl.sh"
 migration="$repo_root/resources/0g_geth_to_reth_migrate.sh"
 storage_installer="$repo_root/resources/0g_storage_node_install.sh"
 storage_updater="$repo_root/resources/0g_storage_node_update.sh"
@@ -14,8 +15,14 @@ require() {
   }
 }
 
-# The installer must keep every sensitive service local without its explicit
-# public-RPC choice. The Engine API has no public option.
+# The public validator deploy entrypoint must fail closed on existing managed
+# node data before it can dispatch to the implementation.
+require 'MANAGED_DATA_ROOT="$HOME/.0gchaind"' "$installer_wrapper"
+require 'existing managed 0G node data was detected' "$installer_wrapper"
+require 'existing validator signing material was detected' "$installer_wrapper"
+
+# The implementation must keep every sensitive service local without its
+# explicit public-RPC choice. The Engine API has no public option.
 require 'RETH_HTTP_ADDR="127.0.0.1"' "$installer"
 require 'MONITORING_ADDR="127.0.0.1"' "$installer"
 require 'AUTHRPC_ADDR="127.0.0.1"' "$installer"

@@ -41,9 +41,11 @@ while IFS= read -r value; do
 done < <(jq -r '.components.validator.bundle.release_artifact_sha256, .components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")
 
 # Covered managed flows must consume the manifest instead of mutable branches,
-# latest tool selectors, or the known incorrect old KV pin.
+# latest tool selectors, or the known incorrect old KV pin. The public validator
+# deploy path is now a safety wrapper; its internal implementation is the
+# manifest-consuming artifact installer.
 covered=(
-    resources/0g_validator_node_aristotle_install.sh
+    resources/0g_validator_node_aristotle_install_impl.sh
     resources/0g_validator_node_update_manual.sh
     resources/0g_geth_to_reth_migrate.sh
     resources/0gchain_app_install.sh
@@ -57,6 +59,14 @@ for rel in "${covered[@]}"; do
     file="$ROOT/$rel"
     grep -Fq 'valley_manifest_get' "$file" || fail "$rel does not consume VERSIONS.json"
 done
+
+VALIDATOR_WRAPPER="$ROOT/resources/0g_validator_node_aristotle_install.sh"
+VALIDATOR_IMPL="$ROOT/resources/0g_validator_node_aristotle_install_impl.sh"
+grep -Fq 'IMPL_NAME="0g_validator_node_aristotle_install_impl.sh"' "$VALIDATOR_WRAPPER" || fail "validator deploy wrapper does not name its reviewed implementation"
+grep -Fq 'exec bash "$LOCAL_IMPL" "$@"' "$VALIDATOR_WRAPPER" || fail "validator deploy wrapper does not execute the local implementation"
+grep -Fq 'VALLEY_SOURCE_REF="${VALLEY_SOURCE_REF:-main}"' "$VALIDATOR_WRAPPER" || fail "validator deploy wrapper does not preserve source-ref selection for remote mode"
+grep -Fq 'bash "$TMP_IMPL" "$@"' "$VALIDATOR_WRAPPER" || fail "validator deploy wrapper does not execute the remote implementation"
+grep -Fq 'valley_manifest_get' "$VALIDATOR_IMPL" || fail "validator implementation does not consume VERSIONS.json"
 
 STORAGE_INSTALL="$ROOT/resources/0g_storage_node_install.sh"
 STORAGE_UPDATE="$ROOT/resources/0g_storage_node_update.sh"
@@ -81,7 +91,7 @@ if grep -RInE --include='*.sh' 'git[[:space:]]+checkout[[:space:]]+main|git[[:sp
 fi
 
 for rel in \
-    resources/0g_validator_node_aristotle_install.sh \
+    resources/0g_validator_node_aristotle_install_impl.sh \
     resources/0g_validator_node_update_manual.sh \
     resources/0g_geth_to_reth_migrate.sh \
     resources/0gchain_app_install.sh \

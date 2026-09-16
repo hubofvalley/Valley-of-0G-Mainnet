@@ -22,7 +22,22 @@ Launch the menu:
 bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
 ```
 
-Select **Validator Node** → **Deploy/re-Deploy Validator Node**, choose Geth or Reth, and follow the prompts.
+Select **Validator Node** → **Deploy Validator Node**, choose Geth or Reth, and follow the prompts.
+
+The deploy flow is intentionally **fresh-install only**. Its public entrypoint
+fails closed before validator/RPC selection whenever the managed
+`$HOME/.0gchaind` data root already exists (including a symlink). If the managed
+consensus key or `priv_validator_state.json` is present, Baconvalley reports the
+more specific signing-material guard. Choosing RPC mode therefore cannot bypass
+the validator-safety boundary.
+
+Use **Manage Validator Node** for normal bundle updates, the documented
+execution-client migration flow for EL changes, and the snapshot/recovery flows
+for data maintenance. Recovery or rebuild of an existing validator identity is
+not automated by the fresh installer: preserve **both** the consensus key and
+last-sign state, make sure only one signer can be active, and follow an audited
+recovery runbook. Do not move or rename the managed data root merely to bypass
+the fresh-install guard.
 
 The current bundle and shipped component versions are recorded in [`../VERSIONS.json`](../VERSIONS.json). The bundle installs:
 
@@ -117,4 +132,4 @@ Test update and rollback procedures on a non-validator or staging node first.
 - [Snapshot Application](snapshots.md)
 - [Node Scheduler](scheduler.md)
 
-last updated by: John
+last updated by: Baconvalley

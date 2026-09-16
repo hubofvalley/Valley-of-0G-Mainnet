@@ -26,7 +26,7 @@ Run it as the user that owns the 0G node files. The script stores environment va
 
 | Option | What it does | When to use | Destructive / risk |
 |---|---|---|---|
-| 1a. Deploy/re-Deploy Validator Node | Installs or reinstalls the 0G validator stack. | First setup or clean redeploy. | Yes - may replace services and data. Backup keys first. |
+| 1a. Deploy Validator Node | Fresh-installs the 0G validator/RPC stack. The public deploy entrypoint refuses before node-type selection when the managed `$HOME/.0gchaind` root already exists, with a specific guard for validator key/signing state. | First node setup only; use Manage Validator Node, migration, snapshot, or recovery flows for an existing node. | High - fresh install replaces services/data. Existing managed node data blocks the flow, and choosing RPC mode cannot bypass the guard. |
 | 1b. Manage Validator Node | Opens validator node management/update flow. | Validator binary or service maintenance. | Medium. |
 | 1c. Apply Validator Node Snapshot | Applies validator node snapshot. | Speed up sync or recover data. | Yes - can replace chain data. |
 | 1d. Add Peers | Updates validator node peers. | Peer connectivity issues. | Low - config change. |
@@ -94,8 +94,9 @@ The withdrawal queue view shows the current block, sampled block time, each entr
 
 ## Safety notes
 
+- `1a` is fresh-install only. Existing `$HOME/.0gchaind` data blocks the deploy before validator/RPC selection; recovery of an existing validator identity is not automated by this installer.
 - `1m` and `1n` are high-risk recovery/migration actions. Test on non-production where possible.
 - In `1o`, never submit operator-only writes, including commission-rate changes, unless you are using the validator operator wallet.
 - Any menu item that submits a transaction spends gas and may move funds or stake.
 - Protect validator keys, EVM private keys, and service backups. Valley does not collect EVM wallet keys for validator/staking writes; Foundry prompts interactively.
-- Storage v1.1.0 and Alignment v1.0.0 still require raw key material upstream. Valley does not move those secrets into argv, shell exports, app config, or generated units; the fresh install flows stop before the secret-dependent step.
+- Storage v1.2.0 and Alignment v1.0.0 still require raw key material upstream. Valley does not move those secrets into argv, shell exports, app config, or generated units; the fresh install flows stop before the secret-dependent step.

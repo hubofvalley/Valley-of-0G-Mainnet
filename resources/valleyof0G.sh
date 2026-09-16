@@ -2293,7 +2293,7 @@ function show_guidelines() {
 
     echo -e "${GREEN}6. Option Descriptions and Guides${RESET}"
     echo -e "${GREEN}Validator Node Options:${RESET}"
-    echo "   a. Deploy/re-Deploy Validator Node: Install/reinstall the validator bundle tracked in VERSIONS.json."
+    echo "   a. Deploy Validator Node: Fresh-install the validator bundle tracked in VERSIONS.json. Existing validator signing material is refused; use Manage Validator Node for updates."
     echo "   b. Manage Validator Node: Update version or perform maintenance."
     echo "   c. Apply Validator Node Snapshot: Speed up sync using official snapshot."
     echo "   d. Add Peers: Add peers (manual or Grand Valley preset)."
@@ -2367,7 +2367,7 @@ function menu() {
     echo -e "${ORANGE}Valley of 0G Mainnet${RESET}"
     echo "Main Menu:"
     echo -e "${GREEN}1. Validator Node${RESET}"
-    echo "    a. Deploy/re-Deploy Validator Node"
+    echo "    a. Deploy Validator Node"
     echo "    b. Manage Validator Node"
     echo "    c. Apply Validator Node Snapshot"
     echo "    d. Add Peers"
