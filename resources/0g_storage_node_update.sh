@@ -16,10 +16,51 @@ CONFIG_FILE="${ZGS_CONFIG_FILE:-$NODE_DIR/run/config-mainnet.toml}"
 SERVICE_NAME="zgs"
 [ -d "$NODE_DIR/.git" ] && [ -f "$CONFIG_FILE" ] || { echo "Existing Storage checkout/config not found." >&2; exit 1; }
 
-if grep -Eq '^[[:space:]]*miner_key[[:space:]]*=[[:space:]]*"[^\"]+"' "$CONFIG_FILE"; then
+miner_key_is_configured() {
+    awk '
+        /^[[:space:]]*miner_key[[:space:]]*=/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            sub(/[[:space:]]*#.*/, "", value)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            if (value != "\"\"" && value != "\047\047") configured = 1
+        }
+        END { exit(configured ? 0 : 1) }
+    ' "$CONFIG_FILE"
+}
+
+miner_cpu_zero_is_configured() {
+    awk '
+        /^[[:space:]]*miner_cpu_percentage[[:space:]]*=/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            sub(/[[:space:]]*#.*/, "", value)
+            gsub(/[[:space:]_]/, "", value)
+            if (value ~ /^[+-]?0$/ || value ~ /^0[xX]0+$/ || value ~ /^0[oO]0+$/ || value ~ /^0[bB]0+$/) zero = 1
+        }
+        END { exit(zero ? 0 : 1) }
+    ' "$CONFIG_FILE"
+}
+
+MINER_KEY_CONFIGURED=false
+if miner_key_is_configured; then
+    MINER_KEY_CONFIGURED=true
     echo "Legacy populated miner_key detected in the existing Storage config."
-    echo "Valley will not read, print, rewrite, copy, or move its value; the existing config is preserved unchanged."
+    echo "Valley will not extract, print, rewrite, copy, or move its value; the existing config is preserved unchanged."
     echo "Upstream Storage currently requires raw key material for mining, so this residual persistent-secret limitation remains operator-owned."
+fi
+
+# The managed v1.2.0 release accepts a numeric zero miner_cpu_percentage, but its
+# mining loop gates work on cpu_percent > 0. With a miner key configured that
+# becomes a silent non-mining state: the process stays up without mining.
+# Upstream main now rejects zero, but no newer tagged Storage release contains
+# that guard yet. Keep this rule release-bounded so future semantics are not
+# guessed. Detect equivalent TOML integer-zero spellings instead of only literal
+# "0" so the preflight cannot be bypassed with +0 or a zero-valued base literal.
+if [[ "$TARGET_VERSION" == "v1.2.0" && "$MINER_KEY_CONFIGURED" == true ]] && miner_cpu_zero_is_configured; then
+    echo "Storage update refused: v1.2.0 silently disables PoRA mining when miner_key is configured and miner_cpu_percentage resolves to 0." >&2
+    echo "Set miner_cpu_percentage to 1..100, or remove miner_key if mining is intentionally disabled, then retry." >&2
+    exit 1
 fi
 
 # Upstream defaults gRPC to 0.0.0.0:50051 when the setting is omitted. Require

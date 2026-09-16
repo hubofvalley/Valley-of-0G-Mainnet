@@ -66,6 +66,8 @@ Use **Storage Node** → **Update Storage Node**. Before updating:
 
 The updater fails closed if `listen_address_grpc` is omitted, because upstream would otherwise fall back to a wildcard/public gRPC listener. An explicitly configured public/wildcard gRPC listener is treated as an operator-owned choice and produces a warning rather than being silently changed.
 
+For the currently managed Storage `v1.2.0`, the updater also fails closed when a populated `miner_key` is combined with a numeric-zero `miner_cpu_percentage`. That release accepts zero but the PoRA mining loop does no work at zero CPU, leaving the process alive without mining. Upstream fixed this on `main` in [0g-storage-node#434](https://github.com/0gfoundation/0g-storage-node/pull/434), but no newer tagged Storage release carries the fix yet. For an intentional miner, use `miner_cpu_percentage = 1..100`; if mining is intentionally disabled, remove the miner key instead.
+
 ## Configuration Changes
 
 Use **Storage Node** → **Change Storage Node Config**. Keep a copy of the previous config and change one setting at a time. Do not publish the admin port or private key. Treat public gRPC exposure as an explicit ingress decision, not a default.
