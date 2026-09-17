@@ -551,6 +551,6 @@ if [ "$EXEC_CLIENT" = "reth" ]; then
 fi
 [ "$NODE_TYPE" = "validator" ] && echo -e "ETH_RPC_URL: ${CYAN}$ETH_RPC_URL${RESET}\nBLOCK_NUM: ${CYAN}$BLOCK_NUM${RESET}"
 echo -e "Node ID: ${CYAN}$(0gchaind comet show-node-id --home $HOME/.0gchaind/0g-home/0gchaind-home/)${RESET}"
-echo -e "\nTo view logs: sudo journalctl -u ${OG_SERVICE_NAME} -u ${EL_SERVICE_NAME} -fn 100"
+echo -e "\nTo view logs: sudo journalctl --unit=${OG_SERVICE_NAME} --unit=${EL_SERVICE_NAME} --lines=100 --follow"
 echo -e "\n${YELLOW}Press Enter to continue to main menu...${RESET}"
 read -r
