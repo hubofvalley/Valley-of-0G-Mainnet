@@ -273,5 +273,5 @@ systemctl is-active --quiet "$SERVICE_NAME" || {
 
 echo "Storage KV $TARGET_VERSION installed from verified commit $TARGET_COMMIT."
 echo "Service: ${SERVICE_NAME}.service"
-echo "Logs: sudo journalctl -u $SERVICE_NAME -fn 100 -o cat"
+echo "Logs: sudo journalctl --unit=$SERVICE_NAME --lines=100 --follow --output=cat"
 echo "Upstream v1.5.1 remains review_required and was not installed by this workflow."

@@ -53,7 +53,7 @@ run_repository_script() {
 }
 
 # Service Name Detection - Ask Once, Remember Forever
-source $HOME/.bash_profile 2>/dev/null
+source "$HOME/.bash_profile" 2>/dev/null || true
 
 if [ -z "${OG_SERVICE_NAME:-}" ]; then
     echo -e "${YELLOW}Service name configuration not found.${RESET}"
@@ -65,22 +65,36 @@ fi
 
 # Detect execution client
 EXEC_CLIENT="${EXEC_CLIENT:-geth}"
+case "$EXEC_CLIENT" in
+    geth)
+        if [ -z "${OG_GETH_SERVICE_NAME:-}" ]; then
+            read -r -p "Enter Geth Service Name (default '0g-geth'): " INPUT_GETH
+            OG_GETH_SERVICE_NAME=${INPUT_GETH:-0g-geth}
+            echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\"" >> "$HOME/.bash_profile"
+            export OG_GETH_SERVICE_NAME
+        fi
+        ACTIVE_EL_SERVICE_NAME=$OG_GETH_SERVICE_NAME
+        ;;
+    reth)
+        if [ -z "${OG_RETH_SERVICE_NAME:-}" ]; then
+            read -r -p "Enter Reth Service Name (default '0g-reth'): " INPUT_RETH
+            OG_RETH_SERVICE_NAME=${INPUT_RETH:-0g-reth}
+            echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\"" >> "$HOME/.bash_profile"
+            export OG_RETH_SERVICE_NAME
+        fi
+        ACTIVE_EL_SERVICE_NAME=$OG_RETH_SERVICE_NAME
+        ;;
+    *)
+        echo "Unsupported EXEC_CLIENT=$EXEC_CLIENT; expected geth or reth." >&2
+        exit 1
+        ;;
+esac
 
-if [ "$EXEC_CLIENT" = "geth" ]; then
-    if [ -z "${OG_GETH_SERVICE_NAME:-}" ]; then
-        read -p "Enter Geth Service Name (default '0g-geth'): " INPUT_GETH
-        OG_GETH_SERVICE_NAME=${INPUT_GETH:-0g-geth}
-        echo "export OG_GETH_SERVICE_NAME=\"$OG_GETH_SERVICE_NAME\"" >> $HOME/.bash_profile
-        export OG_GETH_SERVICE_NAME
-    fi
-else
-    if [ -z "${OG_RETH_SERVICE_NAME:-}" ]; then
-        read -p "Enter Reth Service Name (default '0g-reth'): " INPUT_RETH
-        OG_RETH_SERVICE_NAME=${INPUT_RETH:-0g-reth}
-        echo "export OG_RETH_SERVICE_NAME=\"$OG_RETH_SERVICE_NAME\"" >> $HOME/.bash_profile
-        export OG_RETH_SERVICE_NAME
-    fi
+if ! [[ "$OG_SERVICE_NAME" =~ ^[A-Za-z0-9_.@-]+$ && "$ACTIVE_EL_SERVICE_NAME" =~ ^[A-Za-z0-9_.@-]+$ ]]; then
+    echo "Invalid systemd service name in profile/input." >&2
+    exit 1
 fi
+unset ACTIVE_EL_SERVICE_NAME
 
 LOGO="
  __      __     _  _                        __    ___    _____ 
@@ -1739,14 +1753,14 @@ function show_validator_logs() {
         client_name="Reth"
     fi
     trap "echo \"Displaying Consensus Client and Execution Client ($client_name) Logs:\";" INT
-    sudo journalctl -u ${OG_SERVICE_NAME} -u ${el_svc} -fn 100 -o cat || true
+    sudo journalctl --unit="$OG_SERVICE_NAME" --unit="$el_svc" --lines=100 --follow --output=cat || true
     trap - INT
     menu
 }
 
 function show_consensus_client_logs() {
     trap 'echo "Displaying Consensus Client Logs:";' INT
-    sudo journalctl -u ${OG_SERVICE_NAME} -fn 100 --no-pager
+    sudo journalctl --unit="$OG_SERVICE_NAME" --lines=100 --follow --no-pager || true
     trap - INT
     menu
 }
@@ -1759,7 +1773,7 @@ function show_geth_logs() {
         client_name="Reth"
     fi
     trap "echo \"Displaying Execution Client ($client_name) Logs:\";" INT
-    sudo journalctl -u ${el_svc} -fn 100 --no-pager
+    sudo journalctl --unit="$el_svc" --lines=100 --follow --no-pager || true
     trap - INT
     menu
 }
@@ -2177,7 +2191,7 @@ function deploy_storage_kv() {
 }
 
 function show_storage_kv_logs() {
-    sudo journalctl -u zgskv -fn 100
+    sudo journalctl --unit=zgskv --lines=100 --follow --no-pager || true
     menu
 }
 
@@ -2215,7 +2229,7 @@ function run_ai_alignment_node() {
 function show_ai_alignment_logs() {
     echo -e "${GREEN}Showing AI Alignment Node Logs...${RESET}"
     # Service name used by installer: 0g-alignment-node
-    sudo journalctl -u 0g-alignment-node -fn 100 --no-pager
+    sudo journalctl --unit=0g-alignment-node --lines=100 --follow --no-pager || true
     menu
 }
 

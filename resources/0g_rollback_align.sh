@@ -151,7 +151,7 @@ rollback_align_cl_el() {
     if [ -z "$EL_HEIGHT" ] || [ "$EL_HEIGHT" = "0" ]; then
         echo -e "${YELLOW}Local RPC candidates unavailable. Parsing Reth logs...${RESET}"
         local log_height
-        log_height=$(sudo journalctl -u ${EL_SERVICE} -n 200 --no-pager 2>/dev/null \
+        log_height=$(sudo journalctl --unit="$EL_SERVICE" --lines=200 --no-pager 2>/dev/null \
             | grep -oE 'latest_block=[0-9]+' | tail -n 1 | grep -oE '[0-9]+' || true)
         if [ -n "$log_height" ]; then
             EL_HEIGHT="$log_height"
@@ -161,7 +161,7 @@ rollback_align_cl_el() {
     if [ -z "$EL_HEIGHT" ] || [ "$EL_HEIGHT" = "0" ]; then
         echo -e "${RED}Could not detect local EL height from RPC or logs.${RESET}"
         echo -e "${YELLOW}Please check your local EL (Reth) logs to find the latest block number.${RESET}"
-        echo -e "  Run this command in another terminal: ${CYAN}sudo journalctl -u ${EL_SERVICE} -n 50 --no-pager${RESET}"
+        echo -e "  Run this command in another terminal: ${CYAN}sudo journalctl --unit=${EL_SERVICE} --lines=50 --no-pager${RESET}"
         echo -e "  Look for ${CYAN}'latest_block=XXXXX'${RESET} or similar."
         echo -e "${RED}Do NOT use the consensus (CL/0gchaind) height (e.g., appHeight/stateHeight from 0gchaind replay logs) as the EL height.${RESET}"
         read -p "Enter local EL height manually: " EL_HEIGHT
@@ -416,7 +416,7 @@ rollback_align_cl_el() {
     if [ "$api_ready" != "yes" ]; then
         echo -e "${RED}Engine API not detected after 30s (tried ports: ${engine_port_candidates[*]}).${RESET}"
         echo -e "${YELLOW}Do not start CL yet. Check EL logs first:${RESET}"
-        echo -e "  sudo journalctl -u ${EL_SERVICE} -f -n 100"
+        echo -e "  sudo journalctl --unit=${EL_SERVICE} --lines=100 --follow"
         return 1
     fi
 
@@ -435,8 +435,8 @@ rollback_align_cl_el() {
     echo -e "  1. ${EL_SERVICE} started first"
     echo -e "  2. ${CL_SERVICE} started after EL became healthy"
     echo -e "\n${YELLOW}Monitor logs:${RESET}"
-    echo -e "  sudo journalctl -u ${EL_SERVICE} -f -n 100"
-    echo -e "  sudo journalctl -u ${CL_SERVICE} -f -n 100"
+    echo -e "  sudo journalctl --unit=${EL_SERVICE} --lines=100 --follow"
+    echo -e "  sudo journalctl --unit=${CL_SERVICE} --lines=100 --follow"
 
     echo -e "\n${YELLOW}Press Enter to return to menu...${RESET}"
     read -r
