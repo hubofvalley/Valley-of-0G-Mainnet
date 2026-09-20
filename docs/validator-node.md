@@ -19,7 +19,7 @@ Creating a validator requires at least 500 OG plus transaction gas. Keep additio
 Launch the menu:
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
+bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
 ```
 
 Select **Validator Node** → **Deploy Validator Node**, choose Geth or Reth, and follow the prompts.

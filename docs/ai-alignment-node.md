@@ -14,7 +14,7 @@ The tracked release is defined in [`../VERSIONS.json`](../VERSIONS.json).
 ## Installation
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
+bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
 ```
 
 Select **AI Alignment Node** → **Run AI Alignment Node**. Valley verifies the release artifact from `VERSIONS.json`, stages the binary and non-secret configuration, and can stage a disabled service unit.
