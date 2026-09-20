@@ -17,7 +17,7 @@ The managed `v1.4.0` source also pins its annotated tag object, peeled commit, a
 ## Installation
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Mainnet-Guides/main/0g%20\(zero-gravity\)/resources/valleyof0G.sh)
+bash <(curl -s https://raw.githubusercontent.com/hubofvalley/Valley-of-0G-Mainnet/main/resources/valleyof0G.sh)
 ```
 
 Select **Storage KV** → **Deploy Storage KV**. The default installation uses:
