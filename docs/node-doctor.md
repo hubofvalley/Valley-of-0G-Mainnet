@@ -22,6 +22,8 @@ state, joint CL/EL state, and per-check `status`/`detail` values.
 - actual active services from `systemctl`; it does not trust `EXEC_CLIENT`;
 - CL CometBFT status, `catching_up`, height, and peers;
 - EL JSON-RPC, `eth_syncing`, height, chain ID, and peers;
+- EL `eth_estimateGas` sanity for a read-only identity-precompile call against
+  the current block gas limit, catching gross cap-tracking estimates;
 - CL/EL head convergence and Engine API TCP listener (socket presence only);
 - deployed binary versions against `VERSIONS.json` where binaries are visible;
 - disk headroom, NTP synchronisation, and public RPC listener exposure;
@@ -42,6 +44,10 @@ default: unresolved ports remain `unknown` and cannot produce a false ready
 result. Explicit `DOCTOR_*_PORT` overrides are available for controlled tests
 or unusual layouts. The JSON output reports each port's source as `config`,
 `service`, `override`, or `unknown`.
+
+The estimate-gas probe is advisory: it reports `fail` when a trivial identity
+precompile estimate is at least 50% of the current block gas limit, but it does
+not by itself mark the validator stack unready.
 
 The expected CometBFT network defaults from `VERSIONS.json` to
 `0G-mainnet-aristotle`. `DOCTOR_EXPECTED_CL_NETWORK` may override it for a
