@@ -106,6 +106,10 @@ case "$method" in
         ;;
     eth_chainId) printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":"0x4115"}' ;;
     net_peerCount) printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":"0x3"}' ;;
+    eth_getBlockByNumber) printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"gasLimit":"0x2255100"}}' ;;
+    eth_estimateGas)
+        if [[ "${DOCTOR_FIXTURE:-healthy}" == inflated-estimate ]]; then printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":"0x1baf56b"}'; else printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":"0x5c85"}'; fi
+        ;;
     *) printf '%s\n' '{}' ;;
 esac
 EOF
@@ -162,7 +166,8 @@ echo "$healthy_json" | jq -e '
     (.components.execution.rpc_port == 27545) and
     (.joint.engine_api_port == 27551) and
     .port_sources == {consensus_rpc:"service",execution_rpc:"config",engine_api:"config"} and
-    (any(.checks[]; .id == "engine_listener" and .critical == true))
+    (any(.checks[]; .id == "engine_listener" and .critical == true)) and
+    (any(.checks[]; .id == "execution_estimate_gas" and .status == "pass" and .critical == false))
 ' >/dev/null
 
 geth_json=$(env "${common_env[@]}" DOCTOR_EL_FIXTURE=geth "$DOCTOR" --json)
@@ -189,6 +194,9 @@ echo "$unknown_ports" | jq -e '
 
 public_json=$(env "${common_env[@]}" DOCTOR_FIXTURE=public "$DOCTOR" --json)
 echo "$public_json" | jq -e 'any(.checks[]; .id == "rpc_exposure" and .status == "warn" and .critical == false)' >/dev/null
+
+inflated_json=$(env "${common_env[@]}" DOCTOR_FIXTURE=inflated-estimate "$DOCTOR" --json)
+echo "$inflated_json" | jq -e '.overall == "ready" and .ready == true and any(.checks[]; .id == "execution_estimate_gas" and .status == "fail" and .critical == false)' >/dev/null
 
 if env "${common_env[@]}" DOCTOR_EL_FIXTURE=both "$DOCTOR" --json >/dev/null; then
     echo "dual execution-client fixture unexpectedly passed" >&2

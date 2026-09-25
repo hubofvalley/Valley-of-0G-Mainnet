@@ -2,7 +2,7 @@
   "schema_version": "1.1",
   "network": "0g-mainnet",
   "human_name": "Valley of 0G — Mainnet",
-  "last_updated": "2026-09-15",
+  "last_updated": "2026-09-25",
   "source_of_truth": "VERSIONS.json; managed installers/updaters/migrations consume immutable upstream refs, config-artifact pins, and release digests from this manifest",
   "verification_status": "live_validated_partial",
   "verification_note": "Validator was live-validated on a Grand Valley RPC node: Aristotle bundle v1.0.6, reth 1.8.1 active, geth 1.15.11 inactive (2026-06-26); 0gchaind e8e1071 matched the official v1.0.6 release asset by SHA-256 (2026-07-13). Version model: bundle (v1.0.6, upgrade deadline applies) plus ships (component versions shipped inside the bundle). gv-ops compares live binaries against bundle.ships, not against the bundle version. Storage/storage-kv/alignment are not installed on the validated node yet, so those values are still seeded from scripts (needs_live_verification).",
@@ -31,8 +31,10 @@
           "reth": "1.8.1"
         },
         "ships_note": "Component versions shipped inside bundle v1.0.6. This is the apples-to-apples comparison target for gv-ops vs live binary versions; do not compare binary versions (for example reth 1.8.1) against the bundle version (v1.0.6). geth 1.15.11 and reth 1.8.1 were live-validated on a Grand Valley RPC node (2026-06-26). The live 0gchaind binary and official v1.0.6 release asset both report e8e1071 and have matching SHA-256 dba1fb9c08fb65d30b265bc421919f40b84f06059ead25f3a661da5a5dafdbc9 (2026-07-13).",
-        "upstream_latest": "v1.0.6",
-        "upgrade_status": "validated_current",
+        "upstream_latest": "v1.0.7",
+        "upstream_latest_release_artifact_sha256": "18146c31461be86537a6ad99106021b1a21e73ed62431b0ddfccbe9da0775cdb",
+        "upgrade_status": "review_required",
+        "upgrade_note": "v1.0.7 is an official RPC-only release that fixes 0G Reth eth_estimateGas correctness and estimator CPU amplification without consensus, state-transition, or payload-building changes. Valley keeps v1.0.6 as the managed target until the v1.0.7 bundle contents and runtime upgrade path are independently validated.",
         "release_ref": "v1.0.6",
         "release_artifact": "aristotle-v1.0.6.tar.gz",
         "release_artifact_sha256": "7de32d15a82009bd7fb0da760c708aa5af55ebfc89ebb11d69cf45548f7ceca9"
