@@ -31,6 +31,9 @@ jq -e '.components.storage_node.config_source.commit == .components.storage_node
 [ "$(jq -r '.components.storage_kv.upstream_latest_linux_asset_sha256' "$MANIFEST")" = '7e5ef9c83d5907399863a0832c8cc1f42decc6499cedd72e7aadb94822d1e4c6' ] || fail "Storage KV v1.5.1 candidate digest drift"
 
 [ "$(jq -r '.components.validator.bundle.version_current' "$MANIFEST")" = 'v1.0.6' ] || fail "validator target drift"
+[ "$(jq -r '.components.validator.bundle.upstream_latest' "$MANIFEST")" = 'v1.0.7' ] || fail "validator upstream candidate drift"
+[ "$(jq -r '.components.validator.bundle.upstream_latest_release_artifact_sha256' "$MANIFEST")" = '18146c31461be86537a6ad99106021b1a21e73ed62431b0ddfccbe9da0775cdb' ] || fail "validator v1.0.7 candidate digest drift"
+[ "$(jq -r '.components.validator.bundle.upgrade_status' "$MANIFEST")" = 'review_required' ] || fail "validator upgrade review status drift"
 [ "$(jq -r '.components.validator.bundle.release_artifact_sha256' "$MANIFEST")" = '7de32d15a82009bd7fb0da760c708aa5af55ebfc89ebb11d69cf45548f7ceca9' ] || fail "validator artifact digest drift"
 [ "$(jq -r '.components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")" = 'aa515a403ca2ac9d9321166942631ec158eeda822f3fc11263cd3bdb405c74c1' ] || fail "Alignment artifact digest drift"
 while IFS= read -r value; do
@@ -38,7 +41,7 @@ while IFS= read -r value; do
 done < <(jq -r '.components.storage_node.source_tag_object, .components.storage_node.pinned_commit, .components.storage_node.config_source.commit, .components.storage_node.config_source.blob_sha, .components.storage_kv.pinned_commit' "$MANIFEST")
 while IFS= read -r value; do
     [[ "$value" =~ ^[0-9a-f]{64}$ ]] || fail "invalid artifact digest: $value"
-done < <(jq -r '.components.validator.bundle.release_artifact_sha256, .components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")
+done < <(jq -r '.components.validator.bundle.release_artifact_sha256, .components.validator.bundle.upstream_latest_release_artifact_sha256, .components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")
 
 # Covered managed flows must consume the manifest instead of mutable branches,
 # latest tool selectors, or the known incorrect old KV pin. The public validator
