@@ -34,6 +34,7 @@ jq -e '.components.storage_node.config_source.commit == .components.storage_node
 [ "$(jq -r '.components.validator.bundle.upstream_latest' "$MANIFEST")" = 'v1.0.7' ] || fail "validator upstream candidate drift"
 [ "$(jq -r '.components.validator.bundle.upstream_latest_release_artifact_sha256' "$MANIFEST")" = '18146c31461be86537a6ad99106021b1a21e73ed62431b0ddfccbe9da0775cdb' ] || fail "validator v1.0.7 candidate digest drift"
 [ "$(jq -r '.components.validator.bundle.upgrade_status' "$MANIFEST")" = 'review_required' ] || fail "validator upgrade review status drift"
+jq -e '(.components.validator.bundle.upgrade_note | contains("0g-reth#31")) and (.components.validator.bundle.upgrade_note | contains("restart/replay panic"))' "$MANIFEST" >/dev/null || fail "validator replay-fix release blocker missing"
 [ "$(jq -r '.components.validator.bundle.release_artifact_sha256' "$MANIFEST")" = '7de32d15a82009bd7fb0da760c708aa5af55ebfc89ebb11d69cf45548f7ceca9' ] || fail "validator artifact digest drift"
 [ "$(jq -r '.components.ai_alignment_node.release_artifact_sha256' "$MANIFEST")" = 'aa515a403ca2ac9d9321166942631ec158eeda822f3fc11263cd3bdb405c74c1' ] || fail "Alignment artifact digest drift"
 while IFS= read -r value; do
