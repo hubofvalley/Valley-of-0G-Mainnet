@@ -295,6 +295,14 @@ rpc_call() {
         "$url" 2>/dev/null || true
 }
 
+rpc_call_params() {
+    local url=$1 method=$2 params=$3
+    "$CURL" -sS --connect-timeout 2 --max-time 5 \
+        -H 'Content-Type: application/json' \
+        --data "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":${params},\"id\":1}" \
+        "$url" 2>/dev/null || true
+}
+
 cl_status=$(rpc_call "$CL_RPC_URL" status)
 cl_net_info=$(rpc_call "$CL_RPC_URL" net_info)
 el_syncing_json=$(rpc_call "$EL_RPC_URL" eth_syncing)
@@ -405,7 +413,11 @@ el_head=unknown
 el_head_decimal=unknown
 el_chain_id=unknown
 el_peers=unknown
+el_estimate_gas=unknown
+el_block_gas_limit=unknown
 if [[ "$el_rpc_ok" == true ]]; then
+    el_latest_block_json=$(rpc_call_params "$EL_RPC_URL" eth_getBlockByNumber '["latest",false]')
+    el_estimate_gas_json=$(rpc_call_params "$EL_RPC_URL" eth_estimateGas '[{"to":"0x0000000000000000000000000000000000000004","value":"0x0"}]')
     el_sync=$("$JQ" -r 'if .result == false then "false" elif .result == null then "unknown" else "true" end' <<<"$el_syncing_json")
     el_head=$("$JQ" -r '.result // "unknown"' <<<"$el_block_json")
     if [[ "$el_head" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
@@ -425,6 +437,18 @@ if [[ "$el_rpc_ok" == true ]]; then
     elif [[ "$el_peers_hex" =~ ^[0-9]+$ ]]; then
         el_peers=$el_peers_hex
     fi
+    el_block_gas_limit_hex=$("$JQ" -r '.result.gasLimit // ""' <<<"$el_latest_block_json" 2>/dev/null || true)
+    if [[ "$el_block_gas_limit_hex" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+        el_block_gas_limit=$((16#${el_block_gas_limit_hex:2}))
+    elif [[ "$el_block_gas_limit_hex" =~ ^[0-9]+$ ]]; then
+        el_block_gas_limit=$el_block_gas_limit_hex
+    fi
+    el_estimate_gas_hex=$("$JQ" -r '.result // ""' <<<"$el_estimate_gas_json" 2>/dev/null || true)
+    if [[ "$el_estimate_gas_hex" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+        el_estimate_gas=$((16#${el_estimate_gas_hex:2}))
+    elif [[ "$el_estimate_gas_hex" =~ ^[0-9]+$ ]]; then
+        el_estimate_gas=$el_estimate_gas_hex
+    fi
 fi
 if [[ "$el_sync" == false ]]; then
     add_check execution_sync pass "eth_syncing=false" true
@@ -432,6 +456,16 @@ elif [[ "$el_sync" == true ]]; then
     add_check execution_sync fail "execution client is still syncing" true
 else
     add_check execution_sync warn "execution sync state unavailable" true
+fi
+
+if [[ "$el_estimate_gas" =~ ^[0-9]+$ && "$el_block_gas_limit" =~ ^[0-9]+$ && "$el_block_gas_limit" -gt 0 ]]; then
+    if (( el_estimate_gas * 2 >= el_block_gas_limit )); then
+        add_check execution_estimate_gas fail "eth_estimateGas=${el_estimate_gas} for identity precompile, block gas limit=${el_block_gas_limit}; estimate is >=50% of block limit" false
+    else
+        add_check execution_estimate_gas pass "eth_estimateGas=${el_estimate_gas} for identity precompile, block gas limit=${el_block_gas_limit}" false
+    fi
+else
+    add_check execution_estimate_gas warn "cannot validate eth_estimateGas against the current block gas limit" false
 fi
 
 head_gap=unknown
